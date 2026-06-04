@@ -116,10 +116,27 @@ from PIL import Image
 
 SAVE_PATH = Path("/kaggle/working/smart_stock_dataset")
 
+def pil_to_bytes(img: Image.Image) -> bytes:
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+def iter_to_dataset(iterator) -> Dataset:
+    """
+    Convert an iterator of (PIL Image, text) tuples into a Dataset.
+    Encodes each image to bytes immediately — never accumulates PIL objects in RAM.
+    """
+    img_bytes, texts = [], []
+    for img, text in iterator:
+        img_bytes.append(pil_to_bytes(img))
+        texts.append(text)
+    return Dataset.from_dict({"image_bytes": img_bytes, "text": texts})
+
 def build_and_save_dataset():
     """
     Build combined CORD + SROIE dataset and save to disk.
     On subsequent runs, loads directly from disk — no reprocessing.
+    Processes one split at a time to stay within Kaggle RAM limits.
     """
     if SAVE_PATH.exists():
         print(f"Dataset found at {SAVE_PATH} — loading from disk...")
@@ -127,56 +144,46 @@ def build_and_save_dataset():
 
     print("Building dataset from scratch...")
 
-    def pil_to_bytes(img: Image.Image) -> bytes:
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
-
-    def make_dataset(images: list, texts: list) -> Dataset:
-        # Convert PIL → bytes immediately to avoid RAM accumulation
-        return Dataset.from_dict({
-            "image_bytes": [pil_to_bytes(img) for img in images],
-            "text": texts,
-        })
-
-    # --- CORD (primary dataset — built first) ---
+    # --- CORD (primary dataset — built first, one split at a time) ---
     print("Loading CORD...")
     cord = load_dataset("naver-clova-ix/cord-v2")
-    cord_data = {}
-    for split in ["train", "validation", "test"]:
-        imgs, txts = [], []
+
+    def cord_iter(split):
         for ex in cord[split]:
             text = extract_cord_text(ex["ground_truth"])
             if text:
-                imgs.append(ex["image"])
-                txts.append(text)
-        cord_data[split] = (imgs, txts)
-        print(f"  CORD {split}: {len(imgs)} examples")
-    del cord  # Free RAM before loading SROIE
+                yield ex["image"], text
 
-    # --- SROIE (supplementary — appended to train only) ---
+    cord_train      = iter_to_dataset(cord_iter("train"))
+    cord_validation = iter_to_dataset(cord_iter("validation"))
+    cord_test       = iter_to_dataset(cord_iter("test"))
+    print(f"  CORD train: {len(cord_train)} | val: {len(cord_validation)} | test: {len(cord_test)}")
+    del cord
+
+    # --- SROIE (supplementary — train+test appended to respective CORD splits) ---
     print("Loading SROIE...")
     sroie = load_dataset("sizhkhy/SROIE")
-    sroie_imgs, sroie_txts = [], []
-    for ex in sroie["train"]:
-        text = extract_sroie_text(ex["words"])
-        if text:
-            sroie_imgs.append(ex["images"])
-            sroie_txts.append(text)
-    print(f"  SROIE train: {len(sroie_imgs)} examples")
+
+    def sroie_iter(split):
+        for ex in sroie[split]:
+            text = extract_sroie_text(ex["words"])
+            if text:
+                yield ex["images"], text
+
+    sroie_train = iter_to_dataset(sroie_iter("train"))
+    sroie_test  = iter_to_dataset(sroie_iter("test"))
+    print(f"  SROIE train: {len(sroie_train)} | test: {len(sroie_test)}")
     del sroie
 
     # --- Combine and save ---
-    # train = CORD train + SROIE train
+    # train      = CORD train + SROIE train
     # validation = CORD validation only (SROIE has no val split)
-    # test = CORD test only
+    # test       = CORD test + SROIE test
+    from datasets import concatenate_datasets
     dataset_dict = DatasetDict({
-        "train":      make_dataset(cord_data["train"][0]      + sroie_imgs,
-                                   cord_data["train"][1]      + sroie_txts),
-        "validation": make_dataset(cord_data["validation"][0],
-                                   cord_data["validation"][1]),
-        "test":       make_dataset(cord_data["test"][0],
-                                   cord_data["test"][1]),
+        "train":      concatenate_datasets([cord_train, sroie_train]),
+        "validation": cord_validation,
+        "test":       concatenate_datasets([cord_test, sroie_test]),
     })
 
     SAVE_PATH.mkdir(parents=True, exist_ok=True)
@@ -192,9 +199,9 @@ combined_dataset = build_and_save_dataset()
 ```
 
 Expected sizes (pre-augmentation):
-- Train: ~1,226 examples (CORD train + SROIE train)
-- Validation: ~100 examples (CORD val only)
-- Test: ~100 examples (CORD test only)
+- Train: ~1,412 examples (786 CORD train + 626 SROIE train)
+- Validation: ~98 examples (CORD val only)
+- Test: ~445 examples (98 CORD test + 347 SROIE test)
 
 ---
 
@@ -474,7 +481,7 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 | Issue | Fix |
 |---|---|
 | `AttributeError: 'str' object has no attribute 'get'` | CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
-| Kernel OOM / restart | Was caused by holding all PIL images in RAM at once — fixed by storing images as PNG bytes in the Dataset and using `DatasetDict.save_to_disk()` |
+| Kernel OOM / restart | Root cause: list comprehension materialized all images as both PIL objects and bytes simultaneously. Fixed by `iter_to_dataset()` which encodes one image at a time, plus processing one split at a time with `del cord` / `del sroie` between them |
 | `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
 | Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
 | CUDA OOM during training on batch 8 | Reduce to `per_device_train_batch_size=4`, add `gradient_accumulation_steps=2` |
