@@ -1,7 +1,7 @@
 # Model_Training.md — Model Training Guide
 ## Smart-Stock: TrOCR + DistilBERT Fine-Tuning
 
-**Version:** 3.0 (Updated — OOM fix, SROIE file-based loader, disk persistence)  
+**Version:** 3.0 (Updated — OOM fix, disk persistence, CORD-first ordering)  
 **Training Environment:** Kaggle (T4/P100 GPU)  
 **Last Updated:** Based on live dataset audit + runtime error fixes
 
@@ -90,49 +90,22 @@ Nasi Campur Bali 1 x 75,000 | Bbk Bengil Nasi 1 x 125,000 | MilkShake Starwb 1 x
 
 #### SROIE Text Reconstruction
 
-SROIE is loaded directly from the Kaggle dataset files (not HF Hub). The folder structure is:
-```
-SROIE2019/train/img/        ← receipt images (.jpg)
-SROIE2019/train/entities/   ← ground truth .txt files (JSON: company/date/address/total)
-SROIE2019/test/img/         ← test images (no entities folder)
-```
+SROIE is loaded from HuggingFace Hub. The `words` field is a flat list of tokens — join them to build the OCR text target:
 
 ```python
-from pathlib import Path
-
-SROIE_ROOT = Path("/kaggle/input/sroie-datasetv2/SROIE2019")
-
-def load_sroie_from_disk(split: str) -> tuple[list, list]:
+def extract_sroie_text(words: list) -> str:
     """
-    Load SROIE directly from Kaggle dataset files.
-    Entities files contain JSON: {"company":..., "date":..., "address":..., "total":...}
-    Only train split has entities — test split is skipped (no text targets).
+    SROIE provides a flat word list. Reconstruct as space-joined string.
+    This is the OCR target: the full visible text of the receipt.
     """
-    img_dir = SROIE_ROOT / split / "img"
-    images, texts = [], []
-
-    for img_path in sorted(img_dir.glob("*.jpg")):
-        entities_path = SROIE_ROOT / split / "entities" / f"{img_path.stem}.txt"
-        if not entities_path.exists():
-            continue
-        try:
-            with open(entities_path, "r", encoding="utf-8", errors="ignore") as f:
-                data = json.load(f)
-            parts = [v.strip() for v in data.values() if isinstance(v, str) and v.strip()]
-            text = " | ".join(parts)
-        except (json.JSONDecodeError, Exception):
-            text = ""
-
-        if text:
-            images.append(Image.open(img_path).convert("RGB"))
-            texts.append(text)
-
-    return images, texts
+    return " ".join(words)
 ```
 
 #### Combined Dataset Builder
 
 > **OOM fix:** Images are never held as PIL objects in RAM all at once. Each image is immediately encoded to PNG bytes and stored in the HuggingFace Dataset's Arrow format on disk. The dataset is saved to `/kaggle/working/` on first run — subsequent runs load from disk and skip all reprocessing.
+>
+> CORD is built first (primary dataset), then SROIE is appended to the train split.
 
 ```python
 import io
@@ -141,8 +114,7 @@ from pathlib import Path
 from datasets import load_dataset, Dataset, DatasetDict
 from PIL import Image
 
-SROIE_ROOT = Path("/kaggle/input/sroie-datasetv2/SROIE2019")
-SAVE_PATH  = Path("/kaggle/working/smart_stock_dataset")
+SAVE_PATH = Path("/kaggle/working/smart_stock_dataset")
 
 def build_and_save_dataset():
     """
@@ -167,7 +139,7 @@ def build_and_save_dataset():
             "text": texts,
         })
 
-    # --- CORD ---
+    # --- CORD (primary dataset — built first) ---
     print("Loading CORD...")
     cord = load_dataset("naver-clova-ix/cord-v2")
     cord_data = {}
@@ -182,12 +154,22 @@ def build_and_save_dataset():
         print(f"  CORD {split}: {len(imgs)} examples")
     del cord  # Free RAM before loading SROIE
 
-    # --- SROIE from Kaggle files ---
-    print("Loading SROIE from disk...")
-    sroie_imgs, sroie_txts = load_sroie_from_disk("train")
+    # --- SROIE (supplementary — appended to train only) ---
+    print("Loading SROIE...")
+    sroie = load_dataset("sizhkhy/SROIE")
+    sroie_imgs, sroie_txts = [], []
+    for ex in sroie["train"]:
+        text = extract_sroie_text(ex["words"])
+        if text:
+            sroie_imgs.append(ex["images"])
+            sroie_txts.append(text)
     print(f"  SROIE train: {len(sroie_imgs)} examples")
+    del sroie
 
     # --- Combine and save ---
+    # train = CORD train + SROIE train
+    # validation = CORD validation only (SROIE has no val split)
+    # test = CORD test only
     dataset_dict = DatasetDict({
         "train":      make_dataset(cord_data["train"][0]      + sroie_imgs,
                                    cord_data["train"][1]      + sroie_txts),
@@ -210,9 +192,9 @@ combined_dataset = build_and_save_dataset()
 ```
 
 Expected sizes (pre-augmentation):
-- Train: ~1,200+ examples (CORD train + SROIE train entities)
+- Train: ~1,226 examples (CORD train + SROIE train)
 - Validation: ~100 examples (CORD val only)
-- Test: ~100 examples (CORD test only — SROIE test has no text targets)
+- Test: ~100 examples (CORD test only)
 
 ---
 
@@ -495,7 +477,6 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 | Kernel OOM / restart | Was caused by holding all PIL images in RAM at once — fixed by storing images as PNG bytes in the Dataset and using `DatasetDict.save_to_disk()` |
 | `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
 | Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
-| SROIE not loading from `load_dataset("sizhkhy/SROIE")` | SROIE is loaded from Kaggle file paths via `load_sroie_from_disk()`, not HF Hub |
 | CUDA OOM during training on batch 8 | Reduce to `per_device_train_batch_size=4`, add `gradient_accumulation_steps=2` |
 | `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained(...)` |
 | Kaggle session timeout before training ends | Save checkpoints every epoch (`save_strategy="epoch"`) and resume with `trainer.train(resume_from_checkpoint=True)` |
