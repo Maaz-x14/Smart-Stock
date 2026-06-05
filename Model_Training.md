@@ -1,7 +1,7 @@
 # Model_Training.md — Model Training Guide
 ## Smart-Stock: TrOCR + DistilBERT Fine-Tuning
 
-**Version:** 3.0 (Updated — OOM fix, disk persistence, CORD-first ordering)  
+**Version:** 4.0 (Updated — checkpoint resume, Save & Run All workflow, troubleshooting fixes)  
 **Training Environment:** Kaggle (T4/P100 GPU)  
 **Last Updated:** Based on live dataset audit + runtime error fixes
 
@@ -433,7 +433,14 @@ trainer = Seq2SeqTrainer(
     compute_metrics=compute_metrics,
 )
 
-trainer.train()
+# Resume from latest checkpoint if one exists (avoids retraining from scratch on reruns)
+checkpoint_dir = Path("./trocr-smart-stock")
+checkpoints = sorted(checkpoint_dir.glob("checkpoint-*")) if checkpoint_dir.exists() else []
+resume_from = str(checkpoints[-1]) if checkpoints else None
+if resume_from:
+    print(f"Resuming from checkpoint: {resume_from}")
+
+trainer.train(resume_from_checkpoint=resume_from)
 ```
 
 ---
@@ -441,20 +448,43 @@ trainer.train()
 ### 1.9 Save & Export
 
 ```python
-import os
-
-# Save best model locally
-trainer.save_model("./trocr-smart-stock/best-model")
-processor.save_pretrained("./trocr-smart-stock/best-model")
-
-# On Kaggle: save to /kaggle/working/ for persistence
+# Save best model to /kaggle/working/ — this is what gets committed as output
 save_path = "/kaggle/working/trocr-smart-stock-best"
 trainer.save_model(save_path)
 processor.save_pretrained(save_path)
-print(f"Model saved to: {save_path}")
+
+# Verify both outputs exist and print sizes
+from pathlib import Path
+for folder in ["smart_stock_dataset", "trocr-smart-stock-best"]:
+    path = Path(f"/kaggle/working/{folder}")
+    if path.exists():
+        size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
+        print(f"✅ {folder}: {size:.1f} MB")
+    else:
+        print(f"❌ {folder}: NOT FOUND")
 ```
 
-To download from Kaggle: go to **Output** tab in your notebook → download the folder.
+#### ⚠️ How to permanently save outputs on Kaggle
+
+**Quick Save does NOT save output files — it only saves notebook code.** The `/kaggle/working/` directory is wiped when the session ends unless you use Save & Run All.
+
+**Correct workflow:**
+1. Make sure the save cell above is the last cell in your notebook
+2. Click **"Save Version"** → **"Save & Run All"**
+3. Wait for the full run to complete (~3–4 hours)
+4. After completion, go to your notebook page on kaggle.com → **Output** section
+5. Click the three dots next to `smart_stock_dataset` → **"Create Dataset"** — repeat for `trocr-smart-stock-best`
+6. These become permanent Kaggle datasets — attach them to any future notebook via **Add Input**
+
+**Loading in future sessions once saved as datasets:**
+```python
+# Dataset
+SAVE_PATH = Path("/kaggle/input/smart-stock-dataset/smart_stock_dataset")
+
+# Model
+model = VisionEncoderDecoderModel.from_pretrained("/kaggle/input/trocr-smart-stock-best")
+processor = TrOCRProcessor.from_pretrained("/kaggle/input/trocr-smart-stock-best")
+```
 
 ---
 
@@ -478,7 +508,7 @@ print(f"Test WER: {results['eval_wer']:.4f}")
 |---|---|
 | Dataset loading + extraction | ~5 min |
 | Augmentation + preprocessing | ~10–15 min |
-| Training (10 epochs, ~1,226 examples) | ~2–3 hours |
+| Training (10 epochs, ~1,412 examples) | ~3–4 hours |
 | Evaluation on test set | ~10 min |
 | **Total** | **~3–4 hours** |
 
@@ -504,10 +534,11 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 | `TypeError: unexpected keyword argument 'tokenizer'` / `ValueError: you provided ['pixel_values', 'labels']` | Don't pass `tokenizer` or `processing_class` to `Seq2SeqTrainer` for vision-encoder-decoder models. Use a custom `data_collator` instead (see Trainer cell above) |
 | `ValueError: You have modified the pretrained model configuration to control generation` | Generation params (`num_beams`, `early_stopping`, etc.) must go on `model.generation_config`, not `model.config` — see model setup cell |
 | `TypeError: unexpected keyword argument 'evaluation_strategy'` | Renamed to `eval_strategy` in transformers 4.46+ — use `eval_strategy="epoch"` |
-| CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
+| `AttributeError: 'str' object has no attribute 'get'` | CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
 | Kernel OOM / restart | Root cause: list comprehension materialized all images as both PIL objects and bytes simultaneously. Fixed by `iter_to_dataset()` which encodes one image at a time, plus processing one split at a time with `del cord` / `del sroie` between them |
 | `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
 | Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
 | CUDA OOM during training on batch 8 | Reduce to `per_device_train_batch_size=4`, add `gradient_accumulation_steps=2` |
 | `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained(...)` |
 | Kaggle session timeout before training ends | Save checkpoints every epoch (`save_strategy="epoch"`) and resume with `trainer.train(resume_from_checkpoint=True)` |
+| Output files lost after session ends | Quick Save only saves code, not outputs. Use **Save & Run All** to commit `/kaggle/working/` contents permanently. Then create Kaggle datasets from the Output tab. |
