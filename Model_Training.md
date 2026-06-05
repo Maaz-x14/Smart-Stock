@@ -350,7 +350,7 @@ training_args = Seq2SeqTrainingArguments(
     lr_scheduler_type="cosine",       # Better than linear for OCR tasks
     
     # Eval & saving
-    evaluation_strategy="epoch",
+    eval_strategy="epoch",            # renamed from evaluation_strategy in transformers 4.46+
     save_strategy="epoch",
     load_best_model_at_end=True,
     metric_for_best_model="cer",
@@ -480,7 +480,8 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 
 | Issue | Fix |
 |---|---|
-| `AttributeError: 'str' object has no attribute 'get'` | CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
+| `TypeError: unexpected keyword argument 'evaluation_strategy'` | Renamed to `eval_strategy` in transformers 4.46+ — use `eval_strategy="epoch"` |
+| CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
 | Kernel OOM / restart | Root cause: list comprehension materialized all images as both PIL objects and bytes simultaneously. Fixed by `iter_to_dataset()` which encodes one image at a time, plus processing one split at a time with `del cord` / `del sroie` between them |
 | `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
 | Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
