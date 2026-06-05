@@ -310,22 +310,22 @@ test_dataset.set_format("torch")
 ### 1.5 Model Setup (Corrected)
 
 ```python
-from transformers import VisionEncoderDecoderModel
+from transformers import VisionEncoderDecoderModel, GenerationConfig
 
 model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
 
-# Required decoder config — without these the model won't generate properly
+# Required decoder config
 model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
 model.config.pad_token_id           = processor.tokenizer.pad_token_id
 model.config.vocab_size             = model.config.decoder.vocab_size
 
-# Generation config — controls beam search during evaluation
-model.config.eos_token_id  = processor.tokenizer.sep_token_id
-model.config.max_new_tokens = 128
-model.config.early_stopping = True
-model.config.no_repeat_ngram_size = 3
-model.config.length_penalty = 2.0
-model.config.num_beams = 4
+# Generation config — must go on model.generation_config, not model.config
+# max_new_tokens omitted here — set via generation_max_length in training_args
+model.generation_config.eos_token_id         = processor.tokenizer.sep_token_id
+model.generation_config.early_stopping       = True
+model.generation_config.no_repeat_ngram_size = 3
+model.generation_config.length_penalty       = 2.0
+model.generation_config.num_beams            = 4
 ```
 
 ---
@@ -347,7 +347,7 @@ training_args = Seq2SeqTrainingArguments(
     learning_rate=5e-5,
     warmup_steps=500,
     weight_decay=0.01,
-    lr_scheduler_type="cosine",       # Better than linear for OCR tasks
+    lr_scheduler_type="cosine",
     
     # Eval & saving
     eval_strategy="epoch",            # renamed from evaluation_strategy in transformers 4.46+
@@ -357,7 +357,7 @@ training_args = Seq2SeqTrainingArguments(
     greater_is_better=False,          # Lower CER = better
     save_total_limit=2,               # Keep only 2 checkpoints (Kaggle disk limit)
     
-    # Generation
+    # Generation — only set max_new_tokens, not max_length (conflict warning)
     predict_with_generate=True,
     generation_max_length=128,
     
@@ -365,9 +365,10 @@ training_args = Seq2SeqTrainingArguments(
     fp16=True,                        # Mixed precision — required on T4
     dataloader_num_workers=2,
     
-    # Logging
+    # Logging — log every epoch so CER/WER appear in the table
     logging_dir="./logs",
     logging_steps=50,
+    log_level="info",
     report_to="none",                 # Disable wandb on Kaggle
 )
 ```
@@ -377,22 +378,31 @@ training_args = Seq2SeqTrainingArguments(
 ### 1.7 Metrics
 
 ```python
+import numpy as np
 from jiwer import cer, wer
 
 def compute_metrics(pred):
     pred_ids   = pred.predictions
     labels_ids = pred.label_ids
-    
+
+    # pred_ids may be float logits — argmax to get token ids
+    if pred_ids.dtype != np.int64 and pred_ids.ndim == 3:
+        pred_ids = np.argmax(pred_ids, axis=-1)
+
+    # Clip to valid vocab range to prevent OverflowError during decode
+    vocab_size = processor.tokenizer.vocab_size
+    pred_ids   = np.clip(pred_ids, 0, vocab_size - 1)
+
     # Decode predictions
     pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)
-    
+
     # Replace -100 (padding mask) with pad token id before decoding
     labels_ids[labels_ids == -100] = processor.tokenizer.pad_token_id
     label_str = processor.batch_decode(labels_ids, skip_special_tokens=True)
-    
+
     return {
-        "cer": cer(label_str, pred_str),
-        "wer": wer(label_str, pred_str),
+        "cer": round(cer(label_str, pred_str), 4),
+        "wer": round(wer(label_str, pred_str), 4),
     }
 ```
 
@@ -401,14 +411,25 @@ def compute_metrics(pred):
 ### 1.8 Trainer and Training
 
 ```python
+import torch
 from transformers import Seq2SeqTrainer
+
+def collate_fn(batch):
+    """
+    Custom collator for TrOCR.
+    pixel_values and labels are already tensors (from set_format("torch")).
+    Use torch.stack — torch.tensor() fails on a list of existing tensors.
+    """
+    pixel_values = torch.stack([item["pixel_values"] for item in batch])
+    labels = torch.stack([item["labels"] for item in batch])
+    return {"pixel_values": pixel_values, "labels": labels}
 
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
-    tokenizer=processor.tokenizer,
+    data_collator=collate_fn,
     compute_metrics=compute_metrics,
 )
 
@@ -480,6 +501,8 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 
 | Issue | Fix |
 |---|---|
+| `TypeError: unexpected keyword argument 'tokenizer'` / `ValueError: you provided ['pixel_values', 'labels']` | Don't pass `tokenizer` or `processing_class` to `Seq2SeqTrainer` for vision-encoder-decoder models. Use a custom `data_collator` instead (see Trainer cell above) |
+| `ValueError: You have modified the pretrained model configuration to control generation` | Generation params (`num_beams`, `early_stopping`, etc.) must go on `model.generation_config`, not `model.config` — see model setup cell |
 | `TypeError: unexpected keyword argument 'evaluation_strategy'` | Renamed to `eval_strategy` in transformers 4.46+ — use `eval_strategy="epoch"` |
 | CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
 | Kernel OOM / restart | Root cause: list comprehension materialized all images as both PIL objects and bytes simultaneously. Fixed by `iter_to_dataset()` which encodes one image at a time, plus processing one split at a time with `del cord` / `del sroie` between them |
