@@ -1,7 +1,7 @@
 # Model_Training.md — Model Training Guide
 ## Smart-Stock: TrOCR + DistilBERT Fine-Tuning
 
-**Version:** 4.0 (Updated — checkpoint resume, Save & Run All workflow, troubleshooting fixes)  
+**Version:** 5.0 (Option A hyperparameter fixes — lr, warmup, grad_norm, epochs)  
 **Training Environment:** Kaggle (T4/P100 GPU)  
 **Last Updated:** Based on live dataset audit + runtime error fixes
 
@@ -114,7 +114,11 @@ from pathlib import Path
 from datasets import load_dataset, Dataset, DatasetDict
 from PIL import Image
 
-SAVE_PATH = Path("/kaggle/working/smart_stock_dataset")
+# Dataset already saved from previous run — loads from Kaggle input if attached as dataset,
+# falls back to working dir if running fresh Save & Run All
+SAVE_PATH = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/smart_stock_dataset")
+if not SAVE_PATH.exists():
+    SAVE_PATH = Path("/kaggle/working/smart_stock_dataset")
 
 def pil_to_bytes(img: Image.Image) -> bytes:
     buf = io.BytesIO()
@@ -339,15 +343,16 @@ training_args = Seq2SeqTrainingArguments(
     output_dir="./trocr-smart-stock",
     
     # Training schedule
-    num_train_epochs=10,
+    num_train_epochs=15,              # increased from 10 — more time to converge
     per_device_train_batch_size=8,    # Safe for Kaggle T4 (16GB VRAM)
     per_device_eval_batch_size=8,
     
     # Optimizer
-    learning_rate=5e-5,
-    warmup_steps=500,
+    learning_rate=2e-5,               # reduced from 5e-5 — more stable fine-tuning
+    warmup_ratio=0.06,                # replaces warmup_steps=500 (was 56% of training — way too long)
     weight_decay=0.01,
     lr_scheduler_type="cosine",
+    max_grad_norm=1.0,                # clips exploding gradients — fixes high grad_norm seen in run 1
     
     # Eval & saving
     eval_strategy="epoch",            # renamed from evaluation_strategy in transformers 4.46+
