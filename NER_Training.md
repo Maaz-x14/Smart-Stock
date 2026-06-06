@@ -75,31 +75,37 @@ CORD's `ground_truth` is a JSON string. The `valid_line` field contains per-word
 
 ```python
 # valid_line structure (confirmed from actual dataset inspection)
+# category is on the LINE object, NOT on individual word objects
+# all words in a line share the same category
 {
   "valid_line": [
     {
+      "category": "menu.cnt",   # <- entity category is HERE (line level)
+      "group_id": 5,
+      "sub_group_id": 0,
       "words": [
         {
-          "text": "REAL",
-          "category": "menu.nm",   # <- entity category
-          "quad": {...},
-          "row_id": 2068522
-        },
-        {
-          "text": "GANACHE",
-          "category": "menu.nm"
-        },
-        {
-          "text": "1",
-          "category": "menu.cnt"
-        },
-        {
-          "text": "16,500",
-          "category": "menu.price"
+          "text": "1",          # word objects have NO category field
+          "quad": {"x1": 176, "y1": 624, "x2": 194, ...},
+          "is_key": 0,
+          "row_id": 2068524
         }
-      ],
-      "category": "menu",
-      "group_id": 3
+      ]
+    },
+    {
+      "category": "menu.nm",
+      "group_id": 3,
+      "words": [
+        {"text": "REAL",    "quad": {...}, "is_key": 0, "row_id": 2068522},
+        {"text": "GANACHE", "quad": {...}, "is_key": 0, "row_id": 2068522}
+      ]
+    },
+    {
+      "category": "menu.price",
+      "group_id": 3,
+      "words": [
+        {"text": "16,500", "quad": {...}, "is_key": 0, "row_id": 2068522}
+      ]
     }
   ]
 }
@@ -155,13 +161,14 @@ def load_cord_ner() -> list[dict]:
                 prev_entity = None
 
                 for line in lines:
+                    # category is on the line object — shared by all words in the line
+                    category = line.get("category", "")
+                    entity = CORD_TO_ENTITY.get(category, None)
+
                     for word in line.get("words", []):
                         text = word.get("text", "").strip()
                         if not text:
                             continue
-
-                        category = word.get("category", "")
-                        entity = CORD_TO_ENTITY.get(category, None)
 
                         if entity is None:
                             tags.append(LABEL2ID["O"])
