@@ -58,13 +58,11 @@ Three sources combined. Each contributes different signal:
 |---|---|---|---|---|
 | CORD v2 | `naver-clova-ix/cord-v2` | ~11k lines | FOOD, QTY, PRICE | Primary — receipt domain, structured annotations |
 | TASTEset | `dmargutierrez/TASTESet` | 700 recipes | FOOD, QTY, UNIT | Auxiliary — English food names + UNIT labels |
-| SROIE | `sizhkhy/SROIE` | 626+347 receipts | (domain only) | Domain adapter — all tokens labeled O |
 | Synthetic | Generated in-notebook | 5,000 lines | FOOD, QTY, UNIT, PRICE | Gap filler — English grocery abbreviations |
 
 **Why each source:**
 - **CORD** has the only structured receipt annotations with FOOD/QTY/PRICE — primary source
 - **TASTEset** is the only dataset with clean UNIT labels in English food context — fills CORD's gap
-- **SROIE** has no food entity labels but exposes the model to real receipt formatting (abbreviations, thermal font artifacts) — domain adaptation only, all tokens O
 - **Synthetic** bridges the gap between recipe language ("two cups diced tomatoes") and receipt abbreviations ("DICED TOMATOE 2CT")
 
 ---
@@ -260,38 +258,7 @@ def load_tasteset_ner() -> list[dict]:
 
 ---
 
-## 6. Dataset 3 — SROIE (Domain Adaptation)
-
-SROIE's NER tags are COMPANY, ADDRESS, DATE, TOTAL — not food entities. But real receipt text patterns (abbreviations, price formatting, receipt structure) are valuable for domain adaptation.
-
-**Approach:** Use all SROIE words with all labels set to `O`. This teaches the model what receipt text looks like without introducing wrong entity associations.
-
-```python
-def load_sroie_domain() -> list[dict]:
-    """
-    Load SROIE as domain adaptation data.
-    All tokens labeled O — teaches receipt text patterns, not entity types.
-    """
-    sroie = load_dataset("sizhkhy/SROIE")
-    examples = []
-
-    for split in ["train", "test"]:
-        for sample in sroie[split]:
-            words = sample.get("words", [])
-            if not words:
-                continue
-            tokens = [w.strip() for w in words if w.strip()]
-            tags = [LABEL2ID["O"]] * len(tokens)
-            if tokens:
-                examples.append({"tokens": tokens, "ner_tags": tags})
-
-    print(f"SROIE domain: {len(examples)} lines")
-    return examples
-```
-
----
-
-## 7. Dataset 4 — Synthetic Grocery Lines
+## 6. Dataset 3 — Synthetic Grocery Lines
 
 Generates English grocery receipt abbreviations with ground-truth annotations. Fills the gap between recipe language and receipt abbreviations.
 
@@ -393,7 +360,7 @@ def generate_synthetic_dataset(n: int = 5000) -> list[dict]:
 
 ---
 
-## 8. Combined Dataset Builder
+## 7. Combined Dataset Builder
 
 ```python
 from sklearn.model_selection import train_test_split
@@ -401,20 +368,16 @@ from sklearn.model_selection import train_test_split
 def build_ner_dataset() -> dict:
     """
     Combine all sources, split into train/val/test.
-    Weights: CORD 1x, TASTEset 1x, SROIE 0.3x, Synthetic 0.8x
+    Weights: CORD 1x, TASTEset 1x, Synthetic 0.8x
     """
-    cord_data     = load_cord_ner()
-    tasteset_data = load_tasteset_ner()
-    sroie_data    = load_sroie_domain()
+    cord_data      = load_cord_ner()
+    tasteset_data  = load_tasteset_ner()
     synthetic_data = generate_synthetic_dataset(5000)
-
-    # Apply SROIE weight (0.3x — domain signal only)
-    sroie_sample = random.sample(sroie_data, int(len(sroie_data) * 0.3))
 
     # Apply synthetic weight (0.8x)
     synthetic_sample = random.sample(synthetic_data, int(len(synthetic_data) * 0.8))
 
-    all_data = cord_data + tasteset_data + sroie_sample + synthetic_sample
+    all_data = cord_data + tasteset_data + synthetic_sample
     random.shuffle(all_data)
 
     # 80/10/10 split
@@ -429,7 +392,7 @@ ner_splits = build_ner_dataset()
 
 ---
 
-## 9. Tokenization & Label Alignment
+## 8. Tokenization & Label Alignment
 
 DistilBERT uses WordPiece tokenization which splits words into subword tokens. Labels must be aligned: first subword gets the real label, continuation subwords get `-100` (ignored in loss).
 
@@ -491,7 +454,7 @@ print(f"Tokenized — Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(t
 
 ---
 
-## 10. Model Setup
+## 9. Model Setup
 
 ```python
 from transformers import AutoModelForTokenClassification
@@ -506,7 +469,7 @@ model = AutoModelForTokenClassification.from_pretrained(
 
 ---
 
-## 11. Training Arguments
+## 10. Training Arguments
 
 ```python
 from transformers import TrainingArguments
@@ -546,7 +509,7 @@ training_args = TrainingArguments(
 
 ---
 
-## 12. Evaluation — seqeval F1
+## 11. Evaluation — seqeval F1
 
 Token accuracy is misleading for NER — `O` tokens dominate and inflate it. Always use entity-level F1 via seqeval.
 
@@ -581,7 +544,7 @@ def compute_metrics(p):
 
 ---
 
-## 13. Data Collator
+## 12. Data Collator
 
 ```python
 from transformers import DataCollatorForTokenClassification
@@ -594,7 +557,7 @@ data_collator = DataCollatorForTokenClassification(
 
 ---
 
-## 14. Trainer
+## 13. Trainer
 
 ```python
 from transformers import Trainer
@@ -613,7 +576,7 @@ trainer.train()
 
 ---
 
-## 15. Save & Export
+## 14. Save & Export
 
 ```python
 from pathlib import Path
@@ -639,7 +602,7 @@ for fname in expected:
 
 ---
 
-## 16. Evaluate on Test Set
+## 15. Evaluate on Test Set
 
 ```python
 results = trainer.evaluate(test_ds)
@@ -655,7 +618,7 @@ print(f"Test Recall:    {results['eval_recall']:.4f}")
 
 ---
 
-## 17. Entity Post-Processing (Inference)
+## 16. Entity Post-Processing (Inference)
 
 ```python
 def extract_entities(tokens: list[str], predictions: list[str]) -> dict:
@@ -686,7 +649,7 @@ def extract_entities(tokens: list[str], predictions: list[str]) -> dict:
 
 ---
 
-## 18. ONNX Export
+## 17. ONNX Export
 
 ```python
 from optimum.exporters.onnx import main_export
@@ -738,7 +701,7 @@ def run_ner_onnx(tokens: list[str]) -> list[str]:
 
 ---
 
-## 19. Optuna Hyperparameter Search
+## 18. Optuna Hyperparameter Search
 
 Run after confirming baseline F1 ≥ 0.75. Search on 20% of train data for speed.
 
@@ -788,7 +751,7 @@ for k, v in best_run.hyperparameters.items():
 
 ---
 
-## 20. Kaggle Setup
+## 19. Kaggle Setup
 
 ### Required Packages
 ```bash
@@ -816,7 +779,7 @@ Fits easily in one Kaggle session.
 
 ---
 
-## 21. Target Metrics
+## 20. Target Metrics
 
 | Metric | Target |
 |---|---|
@@ -827,7 +790,7 @@ Fits easily in one Kaggle session.
 
 ---
 
-## 22. Known Lessons (from OCR stage — avoid repeating)
+## 21. Known Lessons (from OCR stage — avoid repeating)
 
 - **`is_split_into_words=True`** is mandatory when passing pre-tokenized word lists to the tokenizer. Missing this causes wrong word boundary detection and broken label alignment.
 - **`-100` masking** on continuation subwords is mandatory. Failing to do this inflates loss on unimportant positions and degrades F1.
@@ -835,11 +798,12 @@ Fits easily in one Kaggle session.
 - **`eval_strategy` not `evaluation_strategy`** — transformers 4.46+ renamed this.
 - **`ground_truth` is a JSON string** — `json.loads()` before accessing any keys.
 - **TASTEset uses `B-QUANTITY` not `B-QTY`** — remap on load or labels won't match your schema.
+- **SROIE NER tags** (COMPANY/DATE/ADDRESS/TOTAL) have no food entity overlap — don't use them for NER training.
 - **Kaggle disk:** NER datasets are tiny compared to image datasets. No disk issues expected here.
 
 ---
 
-## 23. Error Analysis Checklist
+## 22. Error Analysis Checklist
 
 After training, inspect failure cases:
 
