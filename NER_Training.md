@@ -113,24 +113,22 @@ CORD's `ground_truth` is a JSON string. The `valid_line` field contains per-word
 
 **Critical:** `ground_truth` is a raw JSON string — must `json.loads()` it before accessing.
 
-### 4.2 Category → BIO Mapping
+### 4.2 CORD Loader
 
-```python
-CORD_TO_ENTITY = {
-    "menu.nm":        "FOOD",
-    "menu.sub_nm":    "FOOD",   # sub-item / modifier
-    "menu.cnt":       "QTY",
-    "menu.unitprice": "PRICE",
-    "menu.price":     "PRICE",
-    # everything else → O (total.*, sub_total.*, void.*, etc.)
-}
-```
-
-### 4.3 CORD Loader
+> `CORD_TO_ENTITY` is defined at the top of the loader cell — module-level so all functions can access it.
 
 ```python
 import json
 from datasets import load_dataset
+
+# Module-level — must be defined before calling any loader or build function
+CORD_TO_ENTITY = {
+    "menu.nm":        "FOOD",
+    "menu.sub_nm":    "FOOD",
+    "menu.cnt":       "QTY",
+    "menu.unitprice": "PRICE",
+    "menu.price":     "PRICE",
+}
 
 def load_cord_ner() -> list[dict]:
     """
