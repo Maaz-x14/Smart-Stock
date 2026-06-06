@@ -1,554 +1,319 @@
-# Model_Training.md — Model Training Guide
-## Smart-Stock: TrOCR + DistilBERT Fine-Tuning
+# ML_Pipeline.md — Machine Learning Pipeline
+## Smart-Stock: OCR → NER → Normalization → Expiry Prediction
 
-**Version:** 5.0 (Option A hyperparameter fixes — lr, warmup, grad_norm, epochs)  
-**Training Environment:** Kaggle (T4/P100 GPU)  
-**Last Updated:** Based on live dataset audit + runtime error fixes
+**Version:** 1.0
 
 ---
 
-## ⚠️ Critical Dataset Reality Check
+## 1. Pipeline Overview
 
-Before any code: here is what the two datasets actually contain and what role each plays.
+The Smart-Stock ML pipeline transforms a raw receipt image into structured, expiry-annotated inventory items. It consists of four sequential stages:
 
-| Dataset | Fields | Usable For | NOT Usable For |
-|---|---|---|---|
-| `naver-clova-ix/cord-v2` | `image` (PIL), `ground_truth` (JSON str) | **TrOCR fine-tuning** (image → line items text) | NER (no token-level tags) |
-| `sizhkhy/SROIE` | `words`, `bboxes`, `ner_tags`, `images`, `fields` | **TrOCR fine-tuning** (words → reconstruct text), **NER pre-training** | Food NER (tags are COMPANY/DATE/ADDRESS/TOTAL only) |
-
-The original notebook's `preprocess_trocr` function referenced `example["image_path"]` and `example["text"]` — **neither field exists in either dataset**. The corrected pipeline is below.
-
----
-
-## Part 1: TrOCR Fine-Tuning
-
-### 1.1 What TrOCR Learns Here
-
-TrOCR (`microsoft/trocr-base-printed`) is a Vision Encoder-Decoder model. The encoder (ViT) reads the receipt image; the decoder (RoBERTa) generates the transcribed text. Fine-tuning on CORD + SROIE teaches it the visual patterns of receipt typography: compressed thermal fonts, faded ink, price columns, item name abbreviations.
-
-**Input:** Receipt image (PIL RGB)  
-**Output:** String of line items (e.g., `"Nasi Campur Bali 1 x 75,000 | Bbk Bengil Nasi 1 x 125,000"`)
-
----
-
-### 1.2 Dataset Preparation
-
-#### CORD Ground Truth Extraction
-
-CORD's `ground_truth` field is a raw JSON string. You must parse it and construct a flat text target from the `menu` array:
-
-```python
-import json
-
-def extract_cord_text(ground_truth_str: str) -> str:
-    """
-    Parse CORD ground_truth JSON and build a flat text string
-    suitable as a TrOCR decoding target.
-    
-    CORD structure:
-    {
-      "gt_parse": {
-        "menu": [
-          {"nm": "Nasi Campur Bali", "cnt": "1 x", "price": "75,000"},
-          ...
-        ],
-        "sub_total": {"subtotal_price": "428,000"},
-        "total": {"total_price": "428,000"}
-      }
-    }
-    """
-    try:
-        parsed = json.loads(ground_truth_str)
-        gt = parsed.get("gt_parse", {})
-        
-        parts = []
-        for item in gt.get("menu", []):
-            # CORD menu items can be dicts OR plain strings — skip non-dicts
-            if not isinstance(item, dict):
-                continue
-            nm    = item.get("nm", "").strip()
-            cnt   = item.get("cnt", "").strip()
-            price = item.get("price", "").strip()
-            if nm:
-                parts.append(f"{nm} {cnt} {price}".strip())
-        
-        # Optionally append total
-        total = gt.get("total", {})
-        if isinstance(total, dict) and total.get("total_price", ""):
-            parts.append(f"TOTAL {total['total_price']}")
-        
-        return " | ".join(parts)
-    
-    except (json.JSONDecodeError, KeyError, AttributeError):
-        return ""  # Skip malformed examples
 ```
-
-**Example output:**
-```
-Nasi Campur Bali 1 x 75,000 | Bbk Bengil Nasi 1 x 125,000 | MilkShake Starwb 1 x 37,000 | TOTAL 428,000
-```
-
-#### SROIE Text Reconstruction
-
-SROIE is loaded from HuggingFace Hub. The `words` field is a flat list of tokens — join them to build the OCR text target:
-
-```python
-def extract_sroie_text(words: list) -> str:
-    """
-    SROIE provides a flat word list. Reconstruct as space-joined string.
-    This is the OCR target: the full visible text of the receipt.
-    """
-    return " ".join(words)
-```
-
-#### Combined Dataset Builder
-
-> **OOM fix:** Images are never held as PIL objects in RAM all at once. Each image is immediately encoded to PNG bytes and stored in the HuggingFace Dataset's Arrow format on disk. The dataset is saved to `/kaggle/working/` on first run — subsequent runs load from disk and skip all reprocessing.
->
-> CORD is built first (primary dataset), then SROIE is appended to the train split.
-
-```python
-import io
-import json
-from pathlib import Path
-from datasets import load_dataset, Dataset, DatasetDict
-from PIL import Image
-
-# Dataset already saved from previous run — loads from Kaggle input if attached as dataset,
-# falls back to working dir if running fresh Save & Run All
-SAVE_PATH = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/smart_stock_dataset")
-if not SAVE_PATH.exists():
-    SAVE_PATH = Path("/kaggle/working/smart_stock_dataset")
-
-def pil_to_bytes(img: Image.Image) -> bytes:
-    buf = io.BytesIO()
-    img.convert("RGB").save(buf, format="PNG")
-    return buf.getvalue()
-
-def iter_to_dataset(iterator) -> Dataset:
-    """
-    Convert an iterator of (PIL Image, text) tuples into a Dataset.
-    Encodes each image to bytes immediately — never accumulates PIL objects in RAM.
-    """
-    img_bytes, texts = [], []
-    for img, text in iterator:
-        img_bytes.append(pil_to_bytes(img))
-        texts.append(text)
-    return Dataset.from_dict({"image_bytes": img_bytes, "text": texts})
-
-def build_and_save_dataset():
-    """
-    Build combined CORD + SROIE dataset and save to disk.
-    On subsequent runs, loads directly from disk — no reprocessing.
-    Processes one split at a time to stay within Kaggle RAM limits.
-    """
-    if SAVE_PATH.exists():
-        print(f"Dataset found at {SAVE_PATH} — loading from disk...")
-        return DatasetDict.load_from_disk(str(SAVE_PATH))
-
-    print("Building dataset from scratch...")
-
-    # --- CORD (primary dataset — built first, one split at a time) ---
-    print("Loading CORD...")
-    cord = load_dataset("naver-clova-ix/cord-v2")
-
-    def cord_iter(split):
-        for ex in cord[split]:
-            text = extract_cord_text(ex["ground_truth"])
-            if text:
-                yield ex["image"], text
-
-    cord_train      = iter_to_dataset(cord_iter("train"))
-    cord_validation = iter_to_dataset(cord_iter("validation"))
-    cord_test       = iter_to_dataset(cord_iter("test"))
-    print(f"  CORD train: {len(cord_train)} | val: {len(cord_validation)} | test: {len(cord_test)}")
-    del cord
-
-    # --- SROIE (supplementary — train+test appended to respective CORD splits) ---
-    print("Loading SROIE...")
-    sroie = load_dataset("sizhkhy/SROIE")
-
-    def sroie_iter(split):
-        for ex in sroie[split]:
-            text = extract_sroie_text(ex["words"])
-            if text:
-                yield ex["images"], text
-
-    sroie_train = iter_to_dataset(sroie_iter("train"))
-    sroie_test  = iter_to_dataset(sroie_iter("test"))
-    print(f"  SROIE train: {len(sroie_train)} | test: {len(sroie_test)}")
-    del sroie
-
-    # --- Combine and save ---
-    # train      = CORD train + SROIE train
-    # validation = CORD validation only (SROIE has no val split)
-    # test       = CORD test + SROIE test
-    from datasets import concatenate_datasets
-    dataset_dict = DatasetDict({
-        "train":      concatenate_datasets([cord_train, sroie_train]),
-        "validation": cord_validation,
-        "test":       concatenate_datasets([cord_test, sroie_test]),
-    })
-
-    SAVE_PATH.mkdir(parents=True, exist_ok=True)
-    dataset_dict.save_to_disk(str(SAVE_PATH))
-
-    print(f"\n✅ Saved to {SAVE_PATH}")
-    print(f"   Train:      {len(dataset_dict['train'])}")
-    print(f"   Validation: {len(dataset_dict['validation'])}")
-    print(f"   Test:       {len(dataset_dict['test'])}")
-    return dataset_dict
-
-combined_dataset = build_and_save_dataset()
-```
-
-Expected sizes (pre-augmentation):
-- Train: ~1,412 examples (786 CORD train + 626 SROIE train)
-- Validation: ~98 examples (CORD val only)
-- Test: ~445 examples (98 CORD test + 347 SROIE test)
-
----
-
-### 1.3 Augmentation
-
-Apply augmentation **only to training images**, inline during the `preprocess_trocr` step. The augmentation simulates real-world receipt degradation.
-
-```python
-import albumentations as A
-import cv2
-import numpy as np
-from PIL import Image
-
-receipt_augmentation = A.Compose([
-    A.RandomBrightnessContrast(brightness_limit=(-0.3, 0.1), p=0.5),  # Thermal fade
-    A.GaussNoise(var_limit=(10.0, 50.0), p=0.4),                       # Scanner noise
-    A.Rotate(limit=5, border_mode=cv2.BORDER_REPLICATE, p=0.5),        # Crumple tilt
-    A.Perspective(scale=(0.02, 0.05), p=0.3),                          # Photo angle
-    A.MotionBlur(blur_limit=3, p=0.2),                                 # Shaky photo
-    A.ImageCompression(quality_lower=60, quality_upper=90, p=0.4),     # JPEG artifact
-])
-
-def apply_augmentation(pil_image: Image.Image) -> Image.Image:
-    """Convert PIL → numpy → augment → PIL."""
-    img_np = np.array(pil_image.convert("RGB"))
-    augmented = receipt_augmentation(image=img_np)["image"]
-    return Image.fromarray(augmented)
+┌─────────────────────────────────────────────────────────────────┐
+│                     ML PIPELINE                                 │
+│                                                                 │
+│  Receipt Image                                                  │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 1: OCR                                            │   │
+│  │  Model: TrOCR (fine-tuned on SROIE + CORD)               │   │
+│  │  Input:  Receipt image (JPEG/PNG/PDF)                    │   │
+│  │  Output: Raw text string                                 │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│                             ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 2: Named Entity Recognition (NER)                 │   │
+│  │  Model: DistilBERT (fine-tuned on annotated receipt NER) │   │
+│  │  Input:  Raw text tokens                                 │   │
+│  │  Output: Tagged entities: FOOD_ITEM, QUANTITY, UNIT,     │   │
+│  │          BRAND, PRICE, OTHER                             │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│                             ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 3: Normalization                                  │   │
+│  │  Method: Fuzzy match + lookup table + LLM cleaning       │   │
+│  │  Input:  Raw NER entities                                │   │
+│  │  Output: Canonical item records with qty/unit parsed     │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│                             ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 4: Expiry Prediction                              │   │
+│  │  Method: Rule-based baseline + shelf_life_reference DB   │   │
+│  │  Input:  Canonical item + storage context                │   │
+│  │  Output: predicted_expiry_date, confidence score         │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│                             ▼                                   │
+│  Structured Output: List[InventoryItem]                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### 1.4 Preprocessing Function (Corrected)
+## 2. Stage 1: OCR — Text Extraction
 
-This replaces the broken version in your current notebook:
+### Model
+**TrOCR** (Transformer-based OCR) — `microsoft/trocr-base-printed`, fine-tuned on receipt-domain data.
 
+TrOCR uses a Vision Transformer (ViT) encoder and a RoBERTa-based decoder. It outperforms traditional Tesseract OCR on noisy, compressed receipt images due to its end-to-end transformer architecture.
+
+### Input Preprocessing
+Before feeding to TrOCR:
+1. **Deskew** — detect and correct receipt tilt using Hough line transform (OpenCV)
+2. **Binarize** — Otsu thresholding to improve contrast on faded thermal receipts
+3. **Resize** — rescale to 384×384 (ViT input resolution), preserving aspect ratio with padding
+4. **Normalize** — pixel values normalized to [0, 1] with ImageNet mean/std
+
+### Output
+A raw text string preserving line structure:
+```
+KROGER SUPERMARKET
+01/01/2025
+ORG STRWBRY 1LB     2.99
+WHOLE MILK 1GAL     4.49
+GRK YOGURT PLAIN    1.89
+...
+```
+
+### OCR Post-processing
+- Line segmentation: split output by newline
+- Price line filtering: remove lines matching pattern `r'^\d+\.\d{2}$'` (price-only lines)
+- Header/footer stripping: remove store name, date, total, tax lines using keyword heuristics
+
+---
+
+## 3. Stage 2: NER — Entity Extraction
+
+### Model
+**DistilBERT** (`distilbert-base-uncased`), fine-tuned for token classification on an annotated receipt NER corpus.
+
+DistilBERT is chosen over full BERT for its 40% smaller size with ~97% performance retention — critical for keeping inference fast on CPU deployment.
+
+### Entity Labels (BIO tagging scheme)
+
+| Label | Meaning | Example |
+|---|---|---|
+| `B-FOOD` | Beginning of food item | `ORG` in `ORG STRWBRY` |
+| `I-FOOD` | Inside food item | `STRWBRY` |
+| `B-QTY` | Quantity | `1` |
+| `B-UNIT` | Unit of measure | `LB`, `GAL`, `CT` |
+| `B-BRAND` | Brand name | `ORGANIC VALLEY` |
+| `B-PRICE` | Price token | `2.99` |
+| `O` | Outside / irrelevant | Store name, date, etc. |
+
+### Input
+Tokenized receipt text lines (after OCR post-processing). Lines are processed independently. Max sequence length: 128 tokens.
+
+### Output
+Token-level entity tags. Post-processing groups consecutive `B-FOOD` / `I-FOOD` tags into entity spans:
+
+```
+Input:  ["ORG", "STRWBRY", "1", "LB", "2.99"]
+Output: [B-FOOD, I-FOOD, B-QTY, B-UNIT, B-PRICE]
+
+Grouped: {
+  food_tokens: ["ORG", "STRWBRY"],
+  quantity: "1",
+  unit: "LB",
+  price: "2.99"
+}
+```
+
+---
+
+## 4. Stage 3: Normalization
+
+### Goal
+Convert raw, abbreviated, retailer-specific food tokens into canonical food names that match the `shelf_life_reference` table.
+
+`"ORG STRWBRY 1LB"` → `{canonical_name: "Strawberries", quantity: 1.0, unit: "lb", category: "Produce"}`
+
+### Method: Three-Pass Approach
+
+**Pass 1 — Direct Lookup**  
+Check a curated abbreviation dictionary (manually built from common retail receipt shortcodes):
 ```python
-import io
-from transformers import TrOCRProcessor
+ABBREVIATION_MAP = {
+    "STRWBRY": "Strawberries",
+    "MLKWHL": "Whole Milk",
+    "CHKN BRST": "Chicken Breast",
+    "GRK YGRT": "Greek Yogurt",
+    ...
+}
+```
+~800 entries covering the most common grocery items. This handles ~65% of real-world cases.
 
-processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-printed")
+**Pass 2 — Fuzzy Matching**  
+If Pass 1 misses, use `rapidfuzz` library to fuzzy-match against all `canonical_name` values in `shelf_life_reference`:
+```python
+from rapidfuzz import process, fuzz
 
-def preprocess_trocr(example, augment: bool = False):
-    """
-    Preprocess a single example for TrOCR training.
-    
-    Args:
-        example: dict with keys 'image_bytes' (PNG bytes) and 'text' (str)
-        augment: apply receipt degradation augmentation (True for training only)
-    
-    Returns:
-        dict with 'pixel_values' and 'labels' ready for Seq2SeqTrainer
-    """
-    # Decode from stored bytes — avoids holding all PIL images in RAM
-    image = Image.open(io.BytesIO(example["image_bytes"])).convert("RGB")
-    
-    # Apply augmentation during training
-    if augment:
-        image = apply_augmentation(image)
-    
-    # Encode image → pixel_values (ViT expects 384x384)
-    pixel_values = processor(images=image, return_tensors="pt").pixel_values
-    
-    # Encode text → token ids
-    labels = processor.tokenizer(
-        example["text"],
-        padding="max_length",
-        max_length=128,
-        truncation=True,
-    ).input_ids
-    
-    # Replace pad token id with -100 so it's ignored in cross-entropy loss
-    labels = [
-        token_id if token_id != processor.tokenizer.pad_token_id else -100
-        for token_id in labels
-    ]
-    
-    return {
-        "pixel_values": pixel_values.squeeze(),
-        "labels": labels,
-    }
-
-# Apply to datasets — augment train only
-# cache_file_name must point to /kaggle/working/ — input dir is read-only
-train_dataset = combined_dataset["train"].map(
-    lambda ex: preprocess_trocr(ex, augment=True),
-    remove_columns=["image_bytes", "text"],
-    cache_file_name="/kaggle/working/cache_train.arrow",
-    desc="Preprocessing train set",
+match, score, _ = process.extractOne(
+    raw_token,
+    canonical_names_list,
+    scorer=fuzz.token_sort_ratio
 )
-val_dataset = combined_dataset["validation"].map(
-    lambda ex: preprocess_trocr(ex, augment=False),
-    remove_columns=["image_bytes", "text"],
-    cache_file_name="/kaggle/working/cache_val.arrow",
-    desc="Preprocessing val set",
-)
-test_dataset = combined_dataset["test"].map(
-    lambda ex: preprocess_trocr(ex, augment=False),
-    remove_columns=["image_bytes", "text"],
-    cache_file_name="/kaggle/working/cache_test.arrow",
-    desc="Preprocessing test set",
-)
+if score >= 80:
+    return match
+```
+Handles misspellings, partial matches, and ordering variations.
 
-train_dataset.set_format("torch")
-val_dataset.set_format("torch")
-test_dataset.set_format("torch")
+**Pass 3 — LLM Cleaning (Fallback)**  
+For tokens that pass 1 and 2 cannot resolve (score < 80), send to a lightweight LLM (Ollama `llama3.2:1b` running locally, or Claude API call):
+
+```
+Prompt: "This is a line item from a US grocery store receipt: '{raw_token}'.
+What common food item does this refer to? Reply with just the canonical food name, nothing else."
+```
+
+Results are cached in a `normalization_cache` table to avoid redundant LLM calls.
+
+### Unit Normalization
+```python
+UNIT_MAP = {
+    "LB": "lb", "LBS": "lb",
+    "OZ": "oz",
+    "GAL": "gal", "GL": "gal",
+    "CT": "count", "PK": "pack",
+    "EA": "each",
+}
+```
+
+### Category Assignment
+After canonical name is resolved, look up `category` from `shelf_life_reference` by `canonical_name`. If not found, use a simple keyword classifier:
+```python
+CATEGORY_KEYWORDS = {
+    "Produce": ["berries", "apple", "lettuce", "tomato", ...],
+    "Dairy":   ["milk", "cheese", "yogurt", "butter", ...],
+    "Meat":    ["chicken", "beef", "pork", "salmon", ...],
+    "Pantry":  ["bread", "pasta", "rice", "sauce", ...],
+    "Frozen":  ["frozen", "ice cream", ...],
+}
 ```
 
 ---
 
-### 1.5 Model Setup (Corrected)
+## 5. Stage 4: Expiry Prediction
 
+### Method
+Hybrid: rule-based lookup from `shelf_life_reference` + confidence scoring based on match quality.
+
+### Algorithm
 ```python
-from transformers import VisionEncoderDecoderModel, GenerationConfig
+def predict_expiry(
+    canonical_name: str,
+    storage_context: str,
+    purchase_date: date,
+    normalization_confidence: float
+) -> tuple[date, float]:
 
-model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
+    # 1. Look up shelf life reference
+    ref = db.query(ShelfLifeReference).filter_by(
+        canonical_name=canonical_name,
+        storage_context=storage_context
+    ).first()
 
-# Required decoder config
-model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
-model.config.pad_token_id           = processor.tokenizer.pad_token_id
-model.config.vocab_size             = model.config.decoder.vocab_size
-
-# Generation config — must go on model.generation_config, not model.config
-# max_new_tokens omitted here — set via generation_max_length in training_args
-model.generation_config.eos_token_id         = processor.tokenizer.sep_token_id
-model.generation_config.early_stopping       = True
-model.generation_config.no_repeat_ngram_size = 3
-model.generation_config.length_penalty       = 2.0
-model.generation_config.num_beams            = 4
-```
-
----
-
-### 1.6 Training Arguments
-
-```python
-from transformers import Seq2SeqTrainingArguments
-
-training_args = Seq2SeqTrainingArguments(
-    output_dir="./trocr-smart-stock",
-    
-    # Training schedule
-    num_train_epochs=15,              # increased from 10 — more time to converge
-    per_device_train_batch_size=8,    # Safe for Kaggle T4 (16GB VRAM)
-    per_device_eval_batch_size=8,
-    
-    # Optimizer
-    learning_rate=2e-5,               # reduced from 5e-5 — more stable fine-tuning
-    warmup_ratio=0.06,                # replaces warmup_steps=500 (was 56% of training — way too long)
-    weight_decay=0.01,
-    lr_scheduler_type="cosine",
-    max_grad_norm=1.0,                # clips exploding gradients — fixes high grad_norm seen in run 1
-    
-    # Eval & saving
-    eval_strategy="epoch",            # renamed from evaluation_strategy in transformers 4.46+
-    save_strategy="epoch",
-    load_best_model_at_end=True,
-    metric_for_best_model="cer",
-    greater_is_better=False,          # Lower CER = better
-    save_total_limit=2,               # Keep only 2 checkpoints (Kaggle disk limit)
-    
-    # Generation — only set max_new_tokens, not max_length (conflict warning)
-    predict_with_generate=True,
-    generation_max_length=128,
-    
-    # Performance
-    fp16=True,                        # Mixed precision — required on T4
-    dataloader_num_workers=2,
-    
-    # Logging — log every epoch so CER/WER appear in the table
-    logging_dir="./logs",
-    logging_steps=50,
-    log_level="info",
-    report_to="none",                 # Disable wandb on Kaggle
-)
-```
-
----
-
-### 1.7 Metrics
-
-```python
-import numpy as np
-from jiwer import cer, wer
-
-def compute_metrics(pred):
-    pred_ids   = pred.predictions
-    labels_ids = pred.label_ids
-
-    # pred_ids may be float logits — argmax to get token ids
-    if pred_ids.dtype != np.int64 and pred_ids.ndim == 3:
-        pred_ids = np.argmax(pred_ids, axis=-1)
-
-    # Clip to valid vocab range to prevent OverflowError during decode
-    vocab_size = processor.tokenizer.vocab_size
-    pred_ids   = np.clip(pred_ids, 0, vocab_size - 1)
-
-    # Decode predictions
-    pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)
-
-    # Replace -100 (padding mask) with pad token id before decoding
-    labels_ids[labels_ids == -100] = processor.tokenizer.pad_token_id
-    label_str = processor.batch_decode(labels_ids, skip_special_tokens=True)
-
-    return {
-        "cer": round(cer(label_str, pred_str), 4),
-        "wer": round(wer(label_str, pred_str), 4),
-    }
-```
-
----
-
-### 1.8 Trainer and Training
-
-```python
-import torch
-from transformers import Seq2SeqTrainer
-
-def collate_fn(batch):
-    """
-    Custom collator for TrOCR.
-    pixel_values and labels are already tensors (from set_format("torch")).
-    Use torch.stack — torch.tensor() fails on a list of existing tensors.
-    """
-    pixel_values = torch.stack([item["pixel_values"] for item in batch])
-    labels = torch.stack([item["labels"] for item in batch])
-    return {"pixel_values": pixel_values, "labels": labels}
-
-trainer = Seq2SeqTrainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=val_dataset,
-    data_collator=collate_fn,
-    compute_metrics=compute_metrics,
-)
-
-# Resume from latest checkpoint if one exists (avoids retraining from scratch on reruns)
-checkpoint_dir = Path("./trocr-smart-stock")
-checkpoints = sorted(checkpoint_dir.glob("checkpoint-*")) if checkpoint_dir.exists() else []
-resume_from = str(checkpoints[-1]) if checkpoints else None
-if resume_from:
-    print(f"Resuming from checkpoint: {resume_from}")
-
-trainer.train(resume_from_checkpoint=resume_from)
-```
-
----
-
-### 1.9 Save & Export
-
-```python
-# Save best model to /kaggle/working/ — this is what gets committed as output
-save_path = "/kaggle/working/trocr-smart-stock-best"
-trainer.save_model(save_path)
-processor.save_pretrained(save_path)
-
-# Verify both outputs exist and print sizes
-from pathlib import Path
-for folder in ["smart_stock_dataset", "trocr-smart-stock-best"]:
-    path = Path(f"/kaggle/working/{folder}")
-    if path.exists():
-        size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
-        print(f"✅ {folder}: {size:.1f} MB")
+    if ref:
+        shelf_life_days = ref.shelf_life_days_avg
+        base_confidence = 0.95
     else:
-        print(f"❌ {folder}: NOT FOUND")
+        # 2. Category-level fallback
+        ref = db.query(ShelfLifeReference).filter_by(
+            category=item_category,
+            storage_context=storage_context
+        ).order_by(ShelfLifeReference.shelf_life_days_avg).first()
+        shelf_life_days = ref.shelf_life_days_avg if ref else 7
+        base_confidence = 0.70
+
+    # 3. Adjust confidence by normalization quality
+    final_confidence = base_confidence * normalization_confidence
+
+    predicted_expiry = purchase_date + timedelta(days=shelf_life_days)
+    return predicted_expiry, round(final_confidence, 3)
 ```
 
-#### ⚠️ How to permanently save outputs on Kaggle
-
-**Quick Save does NOT save output files — it only saves notebook code.** The `/kaggle/working/` directory is wiped when the session ends unless you use Save & Run All.
-
-**Correct workflow:**
-1. Make sure the save cell above is the last cell in your notebook
-2. Click **"Save Version"** → **"Save & Run All"**
-3. Wait for the full run to complete (~3–4 hours)
-4. After completion, go to your notebook page on kaggle.com → **Output** section
-5. Click the three dots next to `smart_stock_dataset` → **"Create Dataset"** — repeat for `trocr-smart-stock-best`
-6. These become permanent Kaggle datasets — attach them to any future notebook via **Add Input**
-
-**Loading in future sessions once saved as datasets:**
-```python
-# Dataset
-SAVE_PATH = Path("/kaggle/input/smart-stock-dataset/smart_stock_dataset")
-
-# Model
-model = VisionEncoderDecoderModel.from_pretrained("/kaggle/input/trocr-smart-stock-best")
-processor = TrOCRProcessor.from_pretrained("/kaggle/input/trocr-smart-stock-best")
-```
-
----
-
-### 1.10 Evaluate on Test Set
-
-```python
-results = trainer.evaluate(test_dataset)
-print(f"Test CER: {results['eval_cer']:.4f}")
-print(f"Test WER: {results['eval_wer']:.4f}")
-
-# Target benchmarks:
-# CER ≤ 0.05 (5%)
-# WER ≤ 0.10 (10%)
-```
-
----
-
-### 1.11 Kaggle Runtime Estimate
-
-| Phase | Duration (T4 GPU) |
+### Confidence Score Interpretation
+| Range | Meaning |
 |---|---|
-| Dataset loading + extraction | ~5 min |
-| Augmentation + preprocessing | ~10–15 min |
-| Training (10 epochs, ~1,412 examples) | ~3–4 hours |
-| Evaluation on test set | ~10 min |
-| **Total** | **~3–4 hours** |
+| 0.90 – 1.00 | High confidence: exact match in reference table |
+| 0.70 – 0.89 | Medium: category-level fallback or fuzzy match |
+| 0.50 – 0.69 | Low: LLM normalization used, or no category match |
+| < 0.50 | Very low: flag for user review |
 
-Kaggle sessions cap at 12 hours. This fits comfortably in one session.
-
----
-
-## Part 2: DistilBERT NER Fine-Tuning
-
-> **Approach: Option A — Remap CORD Annotations**  
-> CORD's structured `ground_truth` JSON contains `nm` (item name), `cnt` (count/quantity), and `price` fields per menu item. These map directly to the food NER schema: `FOOD_ITEM`, `QUANTITY`, `PRICE`. No manual annotation required.  
->  
-> SROIE's NER tags (COMPANY, ADDRESS, DATE, TOTAL) have **zero overlap** with food entities — SROIE is not used for NER training.
-
-Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be documented in **Part 2** once TrOCR training is complete and validated.
+Items with confidence < 0.60 are surfaced in the confirmation modal with a warning indicator, prompting the user to verify the predicted expiry date manually.
 
 ---
 
-## Appendix: Troubleshooting
+## 6. Pipeline Execution
 
-| Issue | Fix |
+### Inference Code Structure
+```
+ml_service/
+├── pipeline.py          # Orchestrates all 4 stages
+├── ocr/
+│   ├── model.py         # TrOCR loader + inference
+│   └── preprocessor.py  # Image preprocessing
+├── ner/
+│   ├── model.py         # DistilBERT loader + inference
+│   └── entity_parser.py # BIO tag grouping
+├── normalization/
+│   ├── abbreviation_map.py
+│   ├── fuzzy_matcher.py
+│   └── llm_fallback.py
+├── expiry/
+│   └── predictor.py     # Shelf-life lookup + confidence
+└── models/              # Serialized model weights (ONNX)
+    ├── trocr.onnx
+    └── distilbert_ner.onnx
+```
+
+### Latency Budget (per receipt, CPU inference)
+| Stage | Target Latency |
 |---|---|
-| `TypeError: unexpected keyword argument 'tokenizer'` / `ValueError: you provided ['pixel_values', 'labels']` | Don't pass `tokenizer` or `processing_class` to `Seq2SeqTrainer` for vision-encoder-decoder models. Use a custom `data_collator` instead (see Trainer cell above) |
-| `ValueError: You have modified the pretrained model configuration to control generation` | Generation params (`num_beams`, `early_stopping`, etc.) must go on `model.generation_config`, not `model.config` — see model setup cell |
-| `TypeError: unexpected keyword argument 'evaluation_strategy'` | Renamed to `eval_strategy` in transformers 4.46+ — use `eval_strategy="epoch"` |
-| `AttributeError: 'str' object has no attribute 'get'` | CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
-| Kernel OOM / restart | Root cause: list comprehension materialized all images as both PIL objects and bytes simultaneously. Fixed by `iter_to_dataset()` which encodes one image at a time, plus processing one split at a time with `del cord` / `del sroie` between them |
-| `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
-| Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
-| CUDA OOM during training on batch 8 | Reduce to `per_device_train_batch_size=4`, add `gradient_accumulation_steps=2` |
-| `OSError: [Errno 30] Read-only file system` in `.map()` | `/kaggle/input/` is read-only — HuggingFace tries to write cache there. Fix: add `cache_file_name="/kaggle/working/cache_train.arrow"` to each `.map()` call |
-| `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained(...)` |
-| Kaggle session timeout before training ends | Save checkpoints every epoch (`save_strategy="epoch"`) and resume with `trainer.train(resume_from_checkpoint=True)` |
-| Output files lost after session ends | Quick Save only saves code, not outputs. Use **Save & Run All** to commit `/kaggle/working/` contents permanently. Then create Kaggle datasets from the Output tab. |
+| Image preprocessing | < 200ms |
+| OCR (TrOCR ONNX) | < 1500ms |
+| NER (DistilBERT ONNX) | < 500ms |
+| Normalization | < 300ms |
+| Expiry prediction | < 100ms |
+| **Total** | **< 3000ms** |
+
+---
+
+## 7. Evaluation Metrics
+
+### OCR
+| Metric | Definition | Target |
+|---|---|---|
+| Character Error Rate (CER) | Edit distance / total chars | ≤ 5% |
+| Word Error Rate (WER) | Word-level edit distance | ≤ 10% |
+| Line Detection Rate | % of receipt lines captured | ≥ 95% |
+
+### NER
+| Metric | Definition | Target |
+|---|---|---|
+| Entity-level F1 | F1 over FOOD_ITEM entities | ≥ 0.88 |
+| Precision | TP / (TP + FP) | ≥ 0.90 |
+| Recall | TP / (TP + FN) | ≥ 0.86 |
+
+### Normalization
+| Metric | Definition | Target |
+|---|---|---|
+| Canonical Match Rate | % items resolved by Pass 1 + 2 | ≥ 80% |
+| LLM Fallback Rate | % items needing Pass 3 | ≤ 20% |
+
+### Expiry Prediction
+| Metric | Definition | Target |
+|---|---|---|
+| MAE (days) | Mean absolute error vs. actual expiry | ≤ 1.5 days |
+| High-confidence accuracy | Accuracy when confidence ≥ 0.85 | ≥ 92% |
+
+### End-to-End
+| Metric | Definition | Target |
+|---|---|---|
+| Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85% |
+| Processing Time | Wall clock, full pipeline, CPU | < 10s |

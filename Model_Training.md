@@ -1,7 +1,7 @@
 # Model_Training.md — Model Training Guide
 ## Smart-Stock: TrOCR + DistilBERT Fine-Tuning
 
-**Version:** 5.0 (Option A hyperparameter fixes — lr, warmup, grad_norm, epochs)  
+**Version:** 6.0 (Line-level crops, SROIE 2x weighting, Optuna, training args adjusted)  
 **Training Environment:** Kaggle (T4/P100 GPU)  
 **Last Updated:** Based on live dataset audit + runtime error fixes
 
@@ -26,8 +26,10 @@ The original notebook's `preprocess_trocr` function referenced `example["image_p
 
 TrOCR (`microsoft/trocr-base-printed`) is a Vision Encoder-Decoder model. The encoder (ViT) reads the receipt image; the decoder (RoBERTa) generates the transcribed text. Fine-tuning on CORD + SROIE teaches it the visual patterns of receipt typography: compressed thermal fonts, faded ink, price columns, item name abbreviations.
 
-**Input:** Receipt image (PIL RGB)  
-**Output:** String of line items (e.g., `"Nasi Campur Bali 1 x 75,000 | Bbk Bengil Nasi 1 x 125,000"`)
+**Input:** Single cropped text line from a receipt (PIL RGB) — NOT the full receipt image  
+**Output:** Text of that one line (e.g., `"Nasi Campur Bali 1 x 75,000"`)
+
+> **Why line crops?** TrOCR was pretrained on single-line text images. Feeding it full receipt images (20–50 lines) is a domain mismatch — the model has never seen multi-line inputs. Line crops align with its pretraining format and are the single biggest fix for CER.
 
 ---
 
@@ -39,73 +41,100 @@ CORD's `ground_truth` field is a raw JSON string. You must parse it and construc
 
 ```python
 import json
+from PIL import Image
 
-def extract_cord_text(ground_truth_str: str) -> str:
+def extract_cord_crops(image: Image.Image, ground_truth_str: str) -> list:
     """
-    Parse CORD ground_truth JSON and build a flat text string
-    suitable as a TrOCR decoding target.
-    
-    CORD structure:
-    {
-      "gt_parse": {
-        "menu": [
-          {"nm": "Nasi Campur Bali", "cnt": "1 x", "price": "75,000"},
-          ...
-        ],
-        "sub_total": {"subtotal_price": "428,000"},
-        "total": {"total_price": "428,000"}
-      }
-    }
+    Extract line-level crops from a CORD receipt image.
+    Uses per-item bounding boxes (quad field) from ground_truth JSON.
+    Returns list of (cropped_PIL_image, text) pairs — one per menu item.
     """
     try:
-        parsed = json.loads(ground_truth_str)
-        gt = parsed.get("gt_parse", {})
-        
-        parts = []
-        for item in gt.get("menu", []):
-            # CORD menu items can be dicts OR plain strings — skip non-dicts
-            if not isinstance(item, dict):
-                continue
-            nm    = item.get("nm", "").strip()
-            cnt   = item.get("cnt", "").strip()
-            price = item.get("price", "").strip()
-            if nm:
-                parts.append(f"{nm} {cnt} {price}".strip())
-        
-        # Optionally append total
-        total = gt.get("total", {})
-        if isinstance(total, dict) and total.get("total_price", ""):
-            parts.append(f"TOTAL {total['total_price']}")
-        
-        return " | ".join(parts)
-    
-    except (json.JSONDecodeError, KeyError, AttributeError):
-        return ""  # Skip malformed examples
+        gt = json.loads(ground_truth_str).get("gt_parse", {})
+    except (json.JSONDecodeError, AttributeError):
+        return []
+
+    crops = []
+    w, h = image.size
+    for item in gt.get("menu", []):
+        if not isinstance(item, dict):
+            continue
+        nm = item.get("nm", "").strip()
+        if not nm:
+            continue
+        quad = item.get("quad", None)
+        if not quad:
+            continue
+        try:
+            xs = [p["x"] for p in quad]
+            ys = [p["y"] for p in quad]
+        except (KeyError, TypeError):
+            continue
+        x1, y1 = max(0, min(xs)), max(0, min(ys))
+        x2, y2 = min(w, max(xs)), min(h, max(ys))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        crop = image.crop((x1, y1, x2, y2))
+        cnt   = item.get("cnt", "").strip()
+        price = item.get("price", "").strip()
+        text  = f"{nm} {cnt} {price}".strip()
+        crops.append((crop, text))
+    return crops
 ```
 
-**Example output:**
-```
-Nasi Campur Bali 1 x 75,000 | Bbk Bengil Nasi 1 x 125,000 | MilkShake Starwb 1 x 37,000 | TOTAL 428,000
-```
+**Example:** One CORD receipt → ~8 crops, each paired with one menu item line.
 
-#### SROIE Text Reconstruction
+#### SROIE Line-Level Crops
 
-SROIE is loaded from HuggingFace Hub. The `words` field is a flat list of tokens — join them to build the OCR text target:
+SROIE has `bboxes` per word. Group words by Y-coordinate (within 15px = same line), merge bounding boxes per line, crop each line region:
 
 ```python
-def extract_sroie_text(words: list) -> str:
+def extract_sroie_crops(image: Image.Image, words: list, bboxes: list) -> list:
     """
-    SROIE provides a flat word list. Reconstruct as space-joined string.
-    This is the OCR target: the full visible text of the receipt.
+    Group SROIE words into lines by Y-coordinate proximity.
+    Each line bbox is cropped and paired with its joined text.
+    Returns list of (cropped_PIL_image, text) pairs.
     """
-    return " ".join(words)
+    if not words or not bboxes:
+        return []
+
+    # Sort by top-Y of each word bbox
+    items = sorted(zip(words, bboxes), key=lambda x: x[1][1])
+
+    # Group into lines: words within 15px vertically = same line
+    lines = []
+    current_words, current_boxes = [items[0][0]], [items[0][1]]
+    for word, box in items[1:]:
+        if abs(box[1] - current_boxes[-1][1]) <= 15:
+            current_words.append(word)
+            current_boxes.append(box)
+        else:
+            lines.append((current_words, current_boxes))
+            current_words, current_boxes = [word], [box]
+    lines.append((current_words, current_boxes))
+
+    w, h = image.size
+    crops = []
+    for line_words, line_boxes in lines:
+        text = " ".join(line_words).strip()
+        if not text:
+            continue
+        x1 = max(0, min(b[0] for b in line_boxes))
+        y1 = max(0, min(b[1] for b in line_boxes))
+        x2 = min(w, max(b[2] for b in line_boxes))
+        y2 = min(h, max(b[3] for b in line_boxes))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        crops.append((image.crop((x1, y1, x2, y2)), text))
+    return crops
 ```
 
 #### Combined Dataset Builder
 
-> **OOM fix:** Images are never held as PIL objects in RAM all at once. Each image is immediately encoded to PNG bytes and stored in the HuggingFace Dataset's Arrow format on disk. The dataset is saved to `/kaggle/working/` on first run — subsequent runs load from disk and skip all reprocessing.
->
-> CORD is built first (primary dataset), then SROIE is appended to the train split.
+> **OOM fix:** Images encoded to PNG bytes immediately — no PIL accumulation in RAM.  
+> **Line crops:** Each receipt yields multiple (crop, text) pairs instead of one (full_image, all_text).  
+> **SROIE 2x weighting:** SROIE train concatenated twice — gives more weight to English receipt text vs CORD's Indonesian menus.  
+> **New dataset path:** Since this is a rebuilt dataset, save to a new path to avoid loading the old full-image version.
 
 ```python
 import io
@@ -114,11 +143,8 @@ from pathlib import Path
 from datasets import load_dataset, Dataset, DatasetDict
 from PIL import Image
 
-# Dataset already saved from previous run — loads from Kaggle input if attached as dataset,
-# falls back to working dir if running fresh Save & Run All
-SAVE_PATH = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/smart_stock_dataset")
-if not SAVE_PATH.exists():
-    SAVE_PATH = Path("/kaggle/working/smart_stock_dataset")
+# New path — line-crop dataset is incompatible with old full-image dataset
+SAVE_PATH = Path("/kaggle/working/smart_stock_dataset_v2")
 
 def pil_to_bytes(img: Image.Image) -> bytes:
     buf = io.BytesIO()
@@ -138,25 +164,23 @@ def iter_to_dataset(iterator) -> Dataset:
 
 def build_and_save_dataset():
     """
-    Build combined CORD + SROIE dataset and save to disk.
+    Build line-crop CORD + SROIE dataset and save to disk.
     On subsequent runs, loads directly from disk — no reprocessing.
-    Processes one split at a time to stay within Kaggle RAM limits.
     """
     if SAVE_PATH.exists():
         print(f"Dataset found at {SAVE_PATH} — loading from disk...")
         return DatasetDict.load_from_disk(str(SAVE_PATH))
 
-    print("Building dataset from scratch...")
+    print("Building line-crop dataset from scratch...")
 
-    # --- CORD (primary dataset — built first, one split at a time) ---
+    # --- CORD — line crops via bounding boxes ---
     print("Loading CORD...")
     cord = load_dataset("naver-clova-ix/cord-v2")
 
     def cord_iter(split):
         for ex in cord[split]:
-            text = extract_cord_text(ex["ground_truth"])
-            if text:
-                yield ex["image"], text
+            for crop, text in extract_cord_crops(ex["image"], ex["ground_truth"]):
+                yield crop, text
 
     cord_train      = iter_to_dataset(cord_iter("train"))
     cord_validation = iter_to_dataset(cord_iter("validation"))
@@ -164,28 +188,26 @@ def build_and_save_dataset():
     print(f"  CORD train: {len(cord_train)} | val: {len(cord_validation)} | test: {len(cord_test)}")
     del cord
 
-    # --- SROIE (supplementary — train+test appended to respective CORD splits) ---
+    # --- SROIE — line crops via word bbox grouping ---
     print("Loading SROIE...")
     sroie = load_dataset("sizhkhy/SROIE")
 
     def sroie_iter(split):
         for ex in sroie[split]:
-            text = extract_sroie_text(ex["words"])
-            if text:
-                yield ex["images"], text
+            for crop, text in extract_sroie_crops(ex["images"], ex["words"], ex["bboxes"]):
+                yield crop, text
 
     sroie_train = iter_to_dataset(sroie_iter("train"))
     sroie_test  = iter_to_dataset(sroie_iter("test"))
     print(f"  SROIE train: {len(sroie_train)} | test: {len(sroie_test)}")
     del sroie
 
-    # --- Combine and save ---
-    # train      = CORD train + SROIE train
-    # validation = CORD validation only (SROIE has no val split)
-    # test       = CORD test + SROIE test
+    # --- Combine ---
+    # SROIE train duplicated for 2x weight (more English receipt signal)
+    # validation = CORD only (SROIE has no val split)
     from datasets import concatenate_datasets
     dataset_dict = DatasetDict({
-        "train":      concatenate_datasets([cord_train, sroie_train]),
+        "train":      concatenate_datasets([cord_train, sroie_train, sroie_train]),
         "validation": cord_validation,
         "test":       concatenate_datasets([cord_test, sroie_test]),
     })
@@ -202,10 +224,10 @@ def build_and_save_dataset():
 combined_dataset = build_and_save_dataset()
 ```
 
-Expected sizes (pre-augmentation):
-- Train: ~1,412 examples (786 CORD train + 626 SROIE train)
-- Validation: ~98 examples (CORD val only)
-- Test: ~445 examples (98 CORD test + 347 SROIE test)
+Expected sizes (line crops):
+- Train: ~24,000+ examples (CORD ~6k + SROIE ~9k × 2)
+- Validation: ~800 examples (CORD val crops)
+- Test: ~6,000 examples (CORD + SROIE test crops)
 
 ---
 
@@ -217,20 +239,24 @@ Apply augmentation **only to training images**, inline during the `preprocess_tr
 import albumentations as A
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 receipt_augmentation = A.Compose([
     A.RandomBrightnessContrast(brightness_limit=(-0.3, 0.1), p=0.5),  # Thermal fade
-    A.GaussNoise(var_limit=(10.0, 50.0), p=0.4),                       # Scanner noise
+    A.GaussNoise(p=0.4),                                               # Scanner noise
     A.Rotate(limit=5, border_mode=cv2.BORDER_REPLICATE, p=0.5),        # Crumple tilt
     A.Perspective(scale=(0.02, 0.05), p=0.3),                          # Photo angle
     A.MotionBlur(blur_limit=3, p=0.2),                                 # Shaky photo
-    A.ImageCompression(quality_lower=60, quality_upper=90, p=0.4),     # JPEG artifact
+    A.ImageCompression(p=0.4),                                         # JPEG artifact
 ])
 
 def apply_augmentation(pil_image: Image.Image) -> Image.Image:
-    """Convert PIL → numpy → augment → PIL."""
-    img_np = np.array(pil_image.convert("RGB"))
+    """Pad tiny line crops to min 32px height, then augment."""
+    pil_image = pil_image.convert("RGB")
+    if pil_image.height < 32:
+        pad = 32 - pil_image.height
+        pil_image = ImageOps.expand(pil_image, border=(0, pad//2, 0, pad - pad//2), fill=255)
+    img_np = np.array(pil_image)
     augmented = receipt_augmentation(image=img_np)["image"]
     return Image.fromarray(augmented)
 ```
@@ -288,19 +314,23 @@ def preprocess_trocr(example, augment: bool = False):
     }
 
 # Apply to datasets — augment train only
+# cache_file_name must point to /kaggle/working/ — input dir is read-only
 train_dataset = combined_dataset["train"].map(
     lambda ex: preprocess_trocr(ex, augment=True),
     remove_columns=["image_bytes", "text"],
+    cache_file_name="/kaggle/working/cache_train.arrow",
     desc="Preprocessing train set",
 )
 val_dataset = combined_dataset["validation"].map(
     lambda ex: preprocess_trocr(ex, augment=False),
     remove_columns=["image_bytes", "text"],
+    cache_file_name="/kaggle/working/cache_val.arrow",
     desc="Preprocessing val set",
 )
 test_dataset = combined_dataset["test"].map(
     lambda ex: preprocess_trocr(ex, augment=False),
     remove_columns=["image_bytes", "text"],
+    cache_file_name="/kaggle/working/cache_test.arrow",
     desc="Preprocessing test set",
 )
 
@@ -343,7 +373,7 @@ training_args = Seq2SeqTrainingArguments(
     output_dir="./trocr-smart-stock",
     
     # Training schedule
-    num_train_epochs=15,              # increased from 10 — more time to converge
+    num_train_epochs=10,              # reduced back to 10 -- larger dataset means more steps per epoch — more time to converge
     per_device_train_batch_size=8,    # Safe for Kaggle T4 (16GB VRAM)
     per_device_eval_batch_size=8,
     
@@ -360,7 +390,7 @@ training_args = Seq2SeqTrainingArguments(
     load_best_model_at_end=True,
     metric_for_best_model="cer",
     greater_is_better=False,          # Lower CER = better
-    save_total_limit=2,               # Keep only 2 checkpoints (Kaggle disk limit)
+    save_total_limit=3,               # 3 checkpoints -- larger dataset, more valuable intermediates
     
     # Generation — only set max_new_tokens, not max_length (conflict warning)
     predict_with_generate=True,
@@ -511,13 +541,67 @@ print(f"Test WER: {results['eval_wer']:.4f}")
 
 | Phase | Duration (T4 GPU) |
 |---|---|
-| Dataset loading + extraction | ~5 min |
-| Augmentation + preprocessing | ~10–15 min |
-| Training (10 epochs, ~1,412 examples) | ~3–4 hours |
+| Dataset building (line crops) | ~20-30 min |
+| Augmentation + preprocessing | ~30-45 min |
+| Training (10 epochs, ~24,000 examples) | ~6–8 hours |
 | Evaluation on test set | ~10 min |
-| **Total** | **~3–4 hours** |
+| **Total** | **~8-10 hours** |
 
-Kaggle sessions cap at 12 hours. This fits comfortably in one session.
+Kaggle sessions cap at 12 hours. This fits but is tight -- use Save & Run All.
+
+---
+
+## Part 1b: Hyperparameter Search with Optuna
+
+After the first clean training run with line crops, use Optuna (Bayesian optimization) via HuggingFace built-in `hyperparameter_search` to find optimal values.
+
+> Run Optuna **after** confirming line-crop training improves CER baseline. No point searching on a broken dataset.
+
+```python
+# !pip install optuna -q
+
+def optuna_hp_space(trial):
+    return {
+        "learning_rate":               trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True),
+        "warmup_ratio":                trial.suggest_float("warmup_ratio", 0.03, 0.15),
+        "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [4, 8]),
+    }
+
+def model_init():
+    m = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
+    m.config.decoder_start_token_id = processor.tokenizer.cls_token_id
+    m.config.pad_token_id           = processor.tokenizer.pad_token_id
+    m.config.vocab_size             = m.config.decoder.vocab_size
+    m.generation_config.eos_token_id         = processor.tokenizer.sep_token_id
+    m.generation_config.early_stopping       = True
+    m.generation_config.no_repeat_ngram_size = 3
+    m.generation_config.length_penalty       = 2.0
+    m.generation_config.num_beams            = 4
+    return m
+
+# Search on 20% of train data for speed
+search_train = train_dataset.select(range(len(train_dataset) // 5))
+
+search_trainer = Seq2SeqTrainer(
+    model_init=model_init,
+    args=training_args,
+    train_dataset=search_train,
+    eval_dataset=val_dataset,
+    data_collator=collate_fn,
+    compute_metrics=compute_metrics,
+)
+
+best_run = search_trainer.hyperparameter_search(
+    direction="minimize",
+    backend="optuna",
+    hp_space=optuna_hp_space,
+    n_trials=10,
+)
+
+print("Best hyperparameters:", best_run.hyperparameters)
+for k, v in best_run.hyperparameters.items():
+    setattr(training_args, k, v)
+```
 
 ---
 
@@ -544,6 +628,9 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 | `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
 | Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
 | CUDA OOM during training on batch 8 | Reduce to `per_device_train_batch_size=4`, add `gradient_accumulation_steps=2` |
+| `OSError: [Errno 30] Read-only file system` in `.map()` | `/kaggle/input/` is read-only — HuggingFace tries to write cache there. Fix: add `cache_file_name="/kaggle/working/cache_train.arrow"` to each `.map()` call |
 | `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained(...)` |
 | Kaggle session timeout before training ends | Save checkpoints every epoch (`save_strategy="epoch"`) and resume with `trainer.train(resume_from_checkpoint=True)` |
 | Output files lost after session ends | Quick Save only saves code, not outputs. Use **Save & Run All** to commit `/kaggle/working/` contents permanently. Then create Kaggle datasets from the Output tab. |
+| `UserWarning: Argument 'var_limit' not valid for GaussNoise` | Albumentations API changed — use `A.GaussNoise(p=0.4)` and `A.ImageCompression(p=0.4)` without named quality/variance args |
+| `warmup_ratio is deprecated` warning | Harmless for now, will be removed in transformers v5.2 — no action needed yet |
