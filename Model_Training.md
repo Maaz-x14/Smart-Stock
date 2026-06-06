@@ -41,48 +41,70 @@ CORD's `ground_truth` field is a raw JSON string. You must parse it and construc
 
 ```python
 import json
+from collections import defaultdict
 from PIL import Image
 
 def extract_cord_crops(image: Image.Image, ground_truth_str: str) -> list:
     """
     Extract line-level crops from a CORD receipt image.
-    Uses per-item bounding boxes (quad field) from ground_truth JSON.
-    Returns list of (cropped_PIL_image, text) pairs — one per menu item.
+
+    Bounding boxes are in valid_line[].words[].quad, NOT in gt_parse.menu.
+    Each group_id in valid_line = one logical receipt line.
+    We group words by group_id, merge their quads into one bbox, crop it,
+    and use the joined word texts as the OCR target.
+    Only menu.* categories are kept (skip total, tax, header lines).
+
+    Returns list of (cropped_PIL_image, text) pairs.
     """
     try:
-        gt = json.loads(ground_truth_str).get("gt_parse", {})
+        data = json.loads(ground_truth_str)
     except (json.JSONDecodeError, AttributeError):
         return []
 
-    crops = []
+    valid_lines = data.get("valid_line", [])
+    if not valid_lines:
+        return []
+
+    # Group lines by group_id
+    groups = defaultdict(list)
+    for line in valid_lines:
+        groups[line["group_id"]].append(line)
+
     w, h = image.size
-    for item in gt.get("menu", []):
-        if not isinstance(item, dict):
+    crops = []
+
+    for gid, lines in groups.items():
+        # Only keep menu lines (skip total, sub_total, etc.)
+        if not any(l.get("category", "").startswith("menu.") for l in lines):
             continue
-        nm = item.get("nm", "").strip()
-        if not nm:
+
+        all_words, all_xs, all_ys = [], [], []
+        for line in lines:
+            for word in line.get("words", []):
+                text = word.get("text", "").strip()
+                if text:
+                    all_words.append(text)
+                q = word.get("quad", {})
+                if q:
+                    all_xs += [q.get("x1",0), q.get("x2",0), q.get("x3",0), q.get("x4",0)]
+                    all_ys += [q.get("y1",0), q.get("y2",0), q.get("y3",0), q.get("y4",0)]
+
+        if not all_words or not all_xs:
             continue
-        quad = item.get("quad", None)
-        if not quad:
-            continue
-        try:
-            xs = [p["x"] for p in quad]
-            ys = [p["y"] for p in quad]
-        except (KeyError, TypeError):
-            continue
-        x1, y1 = max(0, min(xs)), max(0, min(ys))
-        x2, y2 = min(w, max(xs)), min(h, max(ys))
+
+        text = " ".join(all_words)
+        x1, y1 = max(0, min(all_xs)), max(0, min(all_ys))
+        x2, y2 = min(w, max(all_xs)), min(h, max(all_ys))
         if x2 <= x1 or y2 <= y1:
             continue
-        crop = image.crop((x1, y1, x2, y2))
-        cnt   = item.get("cnt", "").strip()
-        price = item.get("price", "").strip()
-        text  = f"{nm} {cnt} {price}".strip()
-        crops.append((crop, text))
+
+        crops.append((image.crop((x1, y1, x2, y2)), text))
+
     return crops
 ```
 
-**Example:** One CORD receipt → ~8 crops, each paired with one menu item line.
+**Example:** group_id 3 → bbox=(176,552,664,586) → crop → text=`"1 REAL GANACHE 16,500"`  
+One CORD receipt → ~8–12 crops, each one logical receipt line.
 
 #### SROIE Line-Level Crops
 
@@ -269,74 +291,69 @@ This replaces the broken version in your current notebook:
 
 ```python
 import io
+import torch
+from torch.utils.data import Dataset as TorchDataset
 from transformers import TrOCRProcessor
 
 processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-printed")
 
 def preprocess_trocr(example, augment: bool = False):
     """
-    Preprocess a single example for TrOCR training.
-    
-    Args:
-        example: dict with keys 'image_bytes' (PNG bytes) and 'text' (str)
-        augment: apply receipt degradation augmentation (True for training only)
-    
-    Returns:
-        dict with 'pixel_values' and 'labels' ready for Seq2SeqTrainer
+    Preprocess a single (image_bytes, text) example.
+    Called per-item at access time — no upfront caching.
+
+    Returns dict with 'pixel_values' (tensor) and 'labels' (tensor).
     """
-    # Decode from stored bytes — avoids holding all PIL images in RAM
     image = Image.open(io.BytesIO(example["image_bytes"])).convert("RGB")
-    
-    # Apply augmentation during training
+
     if augment:
         image = apply_augmentation(image)
-    
-    # Encode image → pixel_values (ViT expects 384x384)
+
     pixel_values = processor(images=image, return_tensors="pt").pixel_values
-    
-    # Encode text → token ids
+
     labels = processor.tokenizer(
         example["text"],
         padding="max_length",
         max_length=128,
         truncation=True,
     ).input_ids
-    
-    # Replace pad token id with -100 so it's ignored in cross-entropy loss
+
     labels = [
-        token_id if token_id != processor.tokenizer.pad_token_id else -100
-        for token_id in labels
+        t if t != processor.tokenizer.pad_token_id else -100
+        for t in labels
     ]
-    
+
     return {
         "pixel_values": pixel_values.squeeze(),
-        "labels": labels,
+        "labels": torch.tensor(labels, dtype=torch.long),
     }
 
-# Apply to datasets — augment train only
-# cache_file_name must point to /kaggle/working/ — input dir is read-only
-train_dataset = combined_dataset["train"].map(
-    lambda ex: preprocess_trocr(ex, augment=True),
-    remove_columns=["image_bytes", "text"],
-    cache_file_name="/kaggle/working/cache_train.arrow",
-    desc="Preprocessing train set",
-)
-val_dataset = combined_dataset["validation"].map(
-    lambda ex: preprocess_trocr(ex, augment=False),
-    remove_columns=["image_bytes", "text"],
-    cache_file_name="/kaggle/working/cache_val.arrow",
-    desc="Preprocessing val set",
-)
-test_dataset = combined_dataset["test"].map(
-    lambda ex: preprocess_trocr(ex, augment=False),
-    remove_columns=["image_bytes", "text"],
-    cache_file_name="/kaggle/working/cache_test.arrow",
-    desc="Preprocessing test set",
-)
 
-train_dataset.set_format("torch")
-val_dataset.set_format("torch")
-test_dataset.set_format("torch")
+class TrOCRDataset(TorchDataset):
+    """
+    On-the-fly preprocessing — processes each example at access time.
+    Replaces .map() which caused either:
+      - OOM (keep_in_memory=True on 31k examples)
+      - OSError Errno 28 (cache_file_name on full disk)
+    Zero disk usage, zero RAM accumulation, full dataset used.
+    Compatible with Seq2SeqTrainer — accepts any PyTorch Dataset.
+    """
+    def __init__(self, hf_dataset, augment: bool = False):
+        self.data    = hf_dataset
+        self.augment = augment
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return preprocess_trocr(self.data[idx], augment=self.augment)
+
+
+train_dataset = TrOCRDataset(combined_dataset["train"],      augment=True)
+val_dataset   = TrOCRDataset(combined_dataset["validation"], augment=False)
+test_dataset  = TrOCRDataset(combined_dataset["test"],       augment=False)
+
+print(f"Train: {len(train_dataset)} | Val: {len(val_dataset)} | Test: {len(test_dataset)}")
 ```
 
 ---
@@ -452,11 +469,11 @@ from transformers import Seq2SeqTrainer
 def collate_fn(batch):
     """
     Custom collator for TrOCR.
-    pixel_values and labels are already tensors (from set_format("torch")).
-    Use torch.stack — torch.tensor() fails on a list of existing tensors.
+    pixel_values and labels are tensors returned directly by TrOCRDataset.__getitem__.
+    torch.stack combines them into batches.
     """
     pixel_values = torch.stack([item["pixel_values"] for item in batch])
-    labels = torch.stack([item["labels"] for item in batch])
+    labels       = torch.stack([item["labels"]       for item in batch])
     return {"pixel_values": pixel_values, "labels": labels}
 
 trainer = Seq2SeqTrainer(
@@ -483,20 +500,45 @@ trainer.train(resume_from_checkpoint=resume_from)
 ### 1.9 Save & Export
 
 ```python
-# Save best model to /kaggle/working/ — this is what gets committed as output
+from pathlib import Path
+
 save_path = "/kaggle/working/trocr-smart-stock-best"
+
+# Save model weights + config
 trainer.save_model(save_path)
+
+# Save processor (tokenizer + image processor)
 processor.save_pretrained(save_path)
 
-# Verify both outputs exist and print sizes
-from pathlib import Path
-for folder in ["smart_stock_dataset", "trocr-smart-stock-best"]:
+# Save generation config (beam search params)
+model.generation_config.save_pretrained(save_path)
+
+# Verify all expected files are present
+expected_files = [
+    "model.safetensors",
+    "config.json",
+    "generation_config.json",
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "vocab.json",
+    "merges.txt",
+    "processor_config.json",
+]
+print(f"\nSaved to: {save_path}")
+for fname in expected_files:
+    fpath = Path(save_path) / fname
+    exists = fpath.exists()
+    size = fpath.stat().st_size / 1e6 if exists else 0
+    print(f"  {'✅' if exists else '❌'} {fname} ({size:.1f} MB)")
+
+# Verify dataset also present
+for folder in ["smart_stock_dataset_v2", "trocr-smart-stock-best"]:
     path = Path(f"/kaggle/working/{folder}")
     if path.exists():
         size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
-        print(f"✅ {folder}: {size:.1f} MB")
+        print(f"✅ {folder}/: {size:.1f} MB total")
     else:
-        print(f"❌ {folder}: NOT FOUND")
+        print(f"❌ {folder}/: NOT FOUND")
 ```
 
 #### ⚠️ How to permanently save outputs on Kaggle
@@ -506,7 +548,7 @@ for folder in ["smart_stock_dataset", "trocr-smart-stock-best"]:
 **Correct workflow:**
 1. Make sure the save cell above is the last cell in your notebook
 2. Click **"Save Version"** → **"Save & Run All"**
-3. Wait for the full run to complete (~3–4 hours)
+3. Wait for the full run to complete (~12 hours)
 4. After completion, go to your notebook page on kaggle.com → **Output** section
 5. Click the three dots next to `smart_stock_dataset` → **"Create Dataset"** — repeat for `trocr-smart-stock-best`
 6. These become permanent Kaggle datasets — attach them to any future notebook via **Add Input**
@@ -514,7 +556,7 @@ for folder in ["smart_stock_dataset", "trocr-smart-stock-best"]:
 **Loading in future sessions once saved as datasets:**
 ```python
 # Dataset
-SAVE_PATH = Path("/kaggle/input/smart-stock-dataset/smart_stock_dataset")
+SAVE_PATH = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/smart_stock_dataset_v2")
 
 # Model
 model = VisionEncoderDecoderModel.from_pretrained("/kaggle/input/trocr-smart-stock-best")
@@ -543,11 +585,11 @@ print(f"Test WER: {results['eval_wer']:.4f}")
 |---|---|
 | Dataset building (line crops) | ~20-30 min |
 | Augmentation + preprocessing | ~30-45 min |
-| Training (10 epochs, ~24,000 examples) | ~6–8 hours |
+| Training (10 epochs, ~31,000 examples) | ~11–12 hours |
 | Evaluation on test set | ~10 min |
-| **Total** | **~8-10 hours** |
+| **Total** | **~12 hours** |
 
-Kaggle sessions cap at 12 hours. This fits but is tight -- use Save & Run All.
+Kaggle sessions cap at 12 hours. Observed: ~10:47 for 10 epochs on T4 with dual GPU. Fits within limit — use Save & Run All.
 
 ---
 
@@ -628,9 +670,12 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 | `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
 | Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
 | CUDA OOM during training on batch 8 | Reduce to `per_device_train_batch_size=4`, add `gradient_accumulation_steps=2` |
-| `OSError: [Errno 30] Read-only file system` in `.map()` | `/kaggle/input/` is read-only — HuggingFace tries to write cache there. Fix: add `cache_file_name="/kaggle/working/cache_train.arrow"` to each `.map()` call |
+| `OSError: [Errno 30] Read-only file system` in `.map()` | `/kaggle/input/` is read-only — HuggingFace tries to write cache there. Fix: use `keep_in_memory=True` in each `.map()` call instead of `cache_file_name` |
+| `OSError: [Errno 28] No space left on device` in `.map()` | Cache writing to a read-only path (e.g. `/kaggle/input/`). Fix: always point `cache_file_name` to `/kaggle/working/` which has ~20GB free |
+| RAM OOM with `keep_in_memory=True` / `OSError Errno 28` with `cache_file_name` | 31k preprocessed examples exceed both Kaggle RAM and disk. Final fix: use `TrOCRDataset(TorchDataset)` which preprocesses on-the-fly per item — zero disk, zero RAM accumulation, full dataset used |
 | `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained(...)` |
 | Kaggle session timeout before training ends | Save checkpoints every epoch (`save_strategy="epoch"`) and resume with `trainer.train(resume_from_checkpoint=True)` |
 | Output files lost after session ends | Quick Save only saves code, not outputs. Use **Save & Run All** to commit `/kaggle/working/` contents permanently. Then create Kaggle datasets from the Output tab. |
 | `UserWarning: Argument 'var_limit' not valid for GaussNoise` | Albumentations API changed — use `A.GaussNoise(p=0.4)` and `A.ImageCompression(p=0.4)` without named quality/variance args |
 | `warmup_ratio is deprecated` warning | Harmless for now, will be removed in transformers v5.2 — no action needed yet |
+| CORD train: 0 crops extracted | `quad` is NOT in `gt_parse.menu` — it's in `valid_line[].words[].quad`. Use `valid_line` grouped by `group_id` to extract crops, not `menu` items |
