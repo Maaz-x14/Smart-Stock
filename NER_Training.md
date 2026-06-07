@@ -1,7 +1,7 @@
 # NER_Training.md — DistilBERT NER Fine-Tuning Guide
 ## Smart-Stock: Stage 2 — Named Entity Recognition
 
-**Version:** 1.2 (BIO logic fix for I-QTY, expanded synthetic generator v2)  
+**Version:** 1.3 (Resume from checkpoint fixes: paths cell, model init, ONNX path)  
 **Training Environment:** Kaggle (T4 GPU)  
 **Model:** `distilbert-base-uncased` → token classification
 
@@ -384,13 +384,26 @@ print(f"Tokenized — Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(t
 
 ```python
 from transformers import AutoModelForTokenClassification
+from pathlib import Path
 
-model = AutoModelForTokenClassification.from_pretrained(
-    MODEL_CHECKPOINT,
-    num_labels=len(LABEL2ID),
-    id2label=ID2LABEL,
-    label2id=LABEL2ID,
-)
+# Load from checkpoint if resuming, otherwise load base model
+# Loading from checkpoint preserves fine-tuned weights — don't load base model then resume
+if RESUME_FROM and Path(RESUME_FROM).exists():
+    print(f"Loading model from checkpoint: {RESUME_FROM}")
+    model = AutoModelForTokenClassification.from_pretrained(
+        RESUME_FROM,
+        id2label=ID2LABEL,
+        label2id=LABEL2ID,
+        ignore_mismatched_sizes=False,
+    )
+else:
+    print("Loading base model for fresh training")
+    model = AutoModelForTokenClassification.from_pretrained(
+        MODEL_CHECKPOINT,
+        num_labels=len(LABEL2ID),
+        id2label=ID2LABEL,
+        label2id=LABEL2ID,
+    )
 ```
 
 ---
@@ -497,7 +510,9 @@ trainer = Trainer(
     compute_metrics=compute_metrics,
 )
 
-trainer.train()
+# RESUME_FROM defined in paths cell at top
+# Trainer reads trainer_state.json from checkpoint — knows epochs already done
+trainer.train(resume_from_checkpoint=RESUME_FROM)
 ```
 
 ---
@@ -687,6 +702,21 @@ for k, v in best_run.hyperparameters.items():
 pip install transformers datasets evaluate seqeval scikit-learn optimum[onnxruntime] optuna
 ```
 
+### Define Paths (run this first — before any other cell)
+
+```python
+import os
+from pathlib import Path
+
+# NER_DATASET: Kaggle input path when dataset is attached
+# Verify after attaching: os.listdir("/kaggle/input/datasets/maazahmad69/")
+NER_DATASET = "/kaggle/input/datasets/maazahmad69/distilbert-ner-smart-stock"
+
+# Set to checkpoint path to resume, or None for fresh training
+RESUME_FROM = f"{NER_DATASET}/distilbert-ner-smart-stock/checkpoint-1365"
+# RESUME_FROM = None  # uncomment for fresh training
+```
+
 ### Disk Usage
 NER datasets are text-only — negligible disk vs TrOCR image tensors. Full pre-tokenized dataset fits in RAM (~100MB). No need for on-the-fly preprocessing or cache workarounds used in Stage 1.
 
@@ -719,14 +749,14 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 
 # Load ONNX model
+# During current session (after ONNX Export cell runs):
 import onnxruntime as ort
-session = ort.InferenceSession(
-    f"{NER_DATASET}/models/distilbert_ner_onnx/model.onnx"
-)
+session = ort.InferenceSession("./models/distilbert_ner_onnx/model.onnx")
+# In future sessions (from saved Kaggle dataset):
+# session = ort.InferenceSession(f"{NER_DATASET}/models/distilbert_ner_onnx/model.onnx")
 
-# Resume training from checkpoint
-resume_from = f"{NER_DATASET}/distilbert-ner-smart-stock/checkpoint-1365"
-trainer.train(resume_from_checkpoint=resume_from)
+# Resume training from checkpoint — use RESUME_FROM defined in paths cell
+trainer.train(resume_from_checkpoint=RESUME_FROM)
 ```
 
 > **Verify paths after attaching:** `os.listdir("/kaggle/input/datasets/maazahmad69/distilbert-ner-smart-stock/")`
@@ -784,6 +814,9 @@ Fits easily in one Kaggle session.
 - **TASTEset uses `B-QUANTITY` not `B-QTY`** — remap on load or labels won't match your schema.
 - **ONNX load path:** `main_export` saves to `./models/distilbert_ner_onnx/model.onnx` — load with that exact path, not `models/distilbert_ner.onnx`.
 - **`KeyError: 'I-QTY'`** — BIO logic in `load_cord_ner` was generating `I-QTY`/`I-UNIT`/`I-PRICE` continuation tags. Only `FOOD` entities span multiple tokens — QTY/UNIT/PRICE are always single-token, always use `B-` prefix. Fixed in loader.
+- **`NER_DATASET` not defined** — define `NER_DATASET` and `RESUME_FROM` in a paths cell at the very top of the notebook, before any other cell uses them.
+- **Loading base model then resuming from checkpoint** — don't call `from_pretrained(MODEL_CHECKPOINT)` when resuming. Load directly from the checkpoint path — this preserves fine-tuned weights correctly.
+- **ONNX session path when resuming** — the ONNX model lives at `./models/distilbert_ner_onnx/model.onnx` (local export), not inside the `NER_DATASET` input path.
 - **SROIE NER tags** (COMPANY/DATE/ADDRESS/TOTAL) have no food entity overlap — don't use them for NER training.
 - **Kaggle disk:** NER datasets are tiny compared to image datasets. No disk issues expected here.
 
