@@ -1,7 +1,7 @@
 # NER_Training.md — DistilBERT NER Fine-Tuning Guide
 ## Smart-Stock: Stage 2 — Named Entity Recognition
 
-**Version:** 1.0  
+**Version:** 1.1 (Run 1 results added, ONNX path fix, recall gap analysis)  
 **Training Environment:** Kaggle (T4 GPU)  
 **Model:** `distilbert-base-uncased` → token classification
 
@@ -674,7 +674,7 @@ main_export(
 import onnxruntime as ort
 import numpy as np
 
-session = ort.InferenceSession("models/distilbert_ner.onnx")
+session = ort.InferenceSession("./models/distilbert_ner_onnx/model.onnx")  # path matches main_export output dir
 
 def run_ner_onnx(tokens: list[str]) -> list[str]:
     encoding = tokenizer(
@@ -784,7 +784,24 @@ Fits easily in one Kaggle session.
 
 ---
 
-## 20. Target Metrics
+## 20. Actual Training Results (Run 1)
+
+| Epoch | Train Loss | Val Loss | Precision | Recall | F1 | Accuracy |
+|---|---|---|---|---|---|---|
+| 1 | 1.5827 | 0.5521 | 0.9596 | 0.6951 | 0.8062 | 0.7972 |
+| 5 | 0.3682 | 0.3864 | 0.9441 | 0.7806 | 0.8546 | 0.8467 |
+| 9 | 0.2908 | 0.3745 | 0.9026 | 0.8009 | 0.8487 | 0.8511 |
+| 15 | 0.2347 | 0.3862 | 0.8794 | 0.8142 | 0.8455 | 0.8502 |
+
+**Best checkpoint:** epoch 9 (F1: 0.8487, lowest val loss: 0.3745)
+
+**Test set:** F1: 0.835 | Precision: 0.929 | Recall: 0.758
+
+**Recall gap analysis:** Precision is strong (0.929) but recall lags target (0.758 vs 0.86). Model misses ~24% of entities. Likely causes: limited CORD receipt coverage (2,577 lines), synthetic data doesn't cover enough abbreviation variants. Fix: expand `FOOD_ITEMS` list to 200+ items with more abbreviation styles before next run.
+
+---
+
+## 21. Target Metrics
 
 | Metric | Target |
 |---|---|
@@ -803,6 +820,7 @@ Fits easily in one Kaggle session.
 - **`eval_strategy` not `evaluation_strategy`** — transformers 4.46+ renamed this.
 - **`ground_truth` is a JSON string** — `json.loads()` before accessing any keys.
 - **TASTEset uses `B-QUANTITY` not `B-QTY`** — remap on load or labels won't match your schema.
+- **ONNX load path:** `main_export` saves to `./models/distilbert_ner_onnx/model.onnx` — load with that exact path, not `models/distilbert_ner.onnx`.
 - **SROIE NER tags** (COMPANY/DATE/ADDRESS/TOTAL) have no food entity overlap — don't use them for NER training.
 - **Kaggle disk:** NER datasets are tiny compared to image datasets. No disk issues expected here.
 

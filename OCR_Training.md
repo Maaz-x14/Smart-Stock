@@ -407,7 +407,7 @@ training_args = Seq2SeqTrainingArguments(
     load_best_model_at_end=True,
     metric_for_best_model="cer",
     greater_is_better=False,          # Lower CER = better
-    save_total_limit=3,               # 3 checkpoints -- larger dataset, more valuable intermediates
+    save_total_limit=5,               # keep 5 checkpoints — prevents losing progress if session times out
     
     # Generation — only set max_new_tokens, not max_length (conflict warning)
     predict_with_generate=True,
@@ -486,11 +486,14 @@ trainer = Seq2SeqTrainer(
 )
 
 # Resume from latest checkpoint if one exists (avoids retraining from scratch on reruns)
+# Run 1 timed out at step 17,478/19,420 — resume from checkpoint-15536
 checkpoint_dir = Path("./trocr-smart-stock")
 checkpoints = sorted(checkpoint_dir.glob("checkpoint-*")) if checkpoint_dir.exists() else []
 resume_from = str(checkpoints[-1]) if checkpoints else None
 if resume_from:
-    print(f"Resuming from checkpoint: {resume_from}")
+    print(f"Resuming from: {resume_from}")
+else:
+    print("No checkpoint found — training from scratch")
 
 trainer.train(resume_from_checkpoint=resume_from)
 ```
@@ -590,6 +593,8 @@ print(f"Test WER: {results['eval_wer']:.4f}")
 | **Total** | **~12 hours** |
 
 Kaggle sessions cap at 12 hours. Observed: ~10:47 for 10 epochs on T4 with dual GPU. Fits within limit — use Save & Run All.
+
+**Run 1 result:** Session timed out at step 17,478/19,420 (90% complete). Only 2 checkpoints saved due to `save_total_limit=3` deleting earlier ones. Increased to `save_total_limit=5`. Resume from checkpoint-15536 for next run.
 
 ---
 
