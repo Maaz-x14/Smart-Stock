@@ -617,7 +617,15 @@ print(f"Test WER: {results['eval_wer']:.4f}")
 
 Kaggle sessions cap at 12 hours. Observed: ~10:47 for 10 epochs on T4 with dual GPU. Fits within limit — use Save & Run All.
 
-**Run 1 result:** Session timed out at step 17,478/19,420 (90% complete). Only 2 checkpoints saved due to `save_total_limit=3` deleting earlier ones. Increased to `save_total_limit=5`. Resume from checkpoint-15536 for next run.
+**Run 1 result:** Session timed out at step 17,478/19,420 (90% complete). Resumed from checkpoint-15536 in draft session.
+
+**Run 2 results (resumed from checkpoint-15536):**
+
+| Epoch | Train Loss | Val Loss | CER | WER |
+|---|---|---|---|---|
+| 9 | 1.9016 | 0.4853 | **0.140** | **0.250** |
+
+CER dropped from 0.757 (full-image baseline) → 0.140 at epoch 9. Line crops confirmed as the critical fix. Final epoch 10 expected to push CER below 0.13. After full run: run Optuna search.
 
 ---
 
