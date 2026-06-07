@@ -1,7 +1,7 @@
 # NER_Training.md — DistilBERT NER Fine-Tuning Guide
 ## Smart-Stock: Stage 2 — Named Entity Recognition
 
-**Version:** 1.1 (Run 1 results added, ONNX path fix, recall gap analysis)  
+**Version:** 1.2 (BIO logic fix for I-QTY, expanded synthetic generator v2)  
 **Training Environment:** Kaggle (T4 GPU)  
 **Model:** `distilbert-base-uncased` → token classification
 
@@ -171,8 +171,10 @@ def load_cord_ner() -> list[dict]:
                         if entity is None:
                             tags.append(LABEL2ID["O"])
                             prev_entity = None
-                        elif entity == prev_entity:
-                            tags.append(LABEL2ID[f"I-{entity}"])
+                        elif entity == "FOOD" and entity == prev_entity:
+                            # Only FOOD spans get I- continuation prefix
+                            # QTY/UNIT/PRICE are always single-token → always B-
+                            tags.append(LABEL2ID["I-FOOD"])
                         else:
                             tags.append(LABEL2ID[f"B-{entity}"])
                             prev_entity = entity
@@ -268,99 +270,18 @@ def load_tasteset_ner() -> list[dict]:
 Generates English grocery receipt abbreviations with ground-truth annotations. Fills the gap between recipe language and receipt abbreviations.
 
 ```python
-import random
+# Full vocabulary — 200+ items across 10 categories + Pakistani and global brands
+# See generate_synthetic_dataset() below — paste the full expanded generator here
+# Key changes from v1:
+# - ALL_FOOD_ITEMS replaces FOOD_ITEMS (200+ items vs 20)
+# - 20 receipt layout styles vs 4
+# - get_food_variant() adds modifier + structural corruption
+# - add_ocr_noise() adds character + token-level noise
+# - ASSERT token/tag length match at end of each style
+# Full code: use the expanded generate_synthetic_dataset provided separately
 
-FOOD_ITEMS = [
-    ("Strawberries", "STRWBRY"), ("Whole Milk", "WHL MLK"),
-    ("Chicken Breast", "CHKN BRST"), ("Greek Yogurt", "GRK YGRT"),
-    ("Organic Eggs", "ORG EGGS"), ("Cheddar Cheese", "CHDR CH"),
-    ("Salmon Fillet", "SLMN FLT"), ("Baby Spinach", "BBY SPNCH"),
-    ("Orange Juice", "OJ"), ("Pasta Sauce", "PST SCE"),
-    ("Ground Beef", "GRD BEEF"), ("Butter", "BTTR"),
-    ("Mozzarella", "MOZZ"), ("Avocado", "AVOCDO"),
-    ("Blueberries", "BLUBRY"), ("Almond Milk", "ALMD MLK"),
-    ("Chicken Thighs", "CHKN THGH"), ("Pork Chops", "PRK CHPS"),
-    ("Sweet Potatoes", "SWT POTATO"), ("Brown Rice", "BRN RICE"),
-    # Expand to 100+ items before training
-]
-
-UNITS = ["LB", "OZ", "GAL", "GL", "CT", "PK", "EA", "BAG", "BTL", "BX", "CAN"]
-PRICE_RANGE = (0.99, 14.99)
-
-def generate_synthetic_line() -> dict:
-    """Generate one synthetic receipt line with BIO annotations."""
-    food_full, food_abbr = random.choice(FOOD_ITEMS)
-    qty = random.randint(1, 5)
-    unit = random.choice(UNITS)
-    price = round(random.uniform(*PRICE_RANGE), 2)
-
-    style = random.randint(0, 3)
-
-    if style == 0:
-        # "STRWBRY 1 LB 2.99"
-        tokens = food_abbr.split() + [str(qty), unit, str(price)]
-        n_food = len(food_abbr.split())
-        tags = (
-            [LABEL2ID["B-FOOD"]] +
-            [LABEL2ID["I-FOOD"]] * (n_food - 1) +
-            [LABEL2ID["B-QTY"], LABEL2ID["B-UNIT"], LABEL2ID["B-PRICE"]]
-        )
-    elif style == 1:
-        # "ORG STRWBRY 1LB 2.99"
-        food_tokens = ("ORG " + food_abbr).split()
-        combined_qty_unit = f"{qty}{unit}"
-        tokens = food_tokens + [combined_qty_unit, str(price)]
-        n_food = len(food_tokens)
-        tags = (
-            [LABEL2ID["B-FOOD"]] +
-            [LABEL2ID["I-FOOD"]] * (n_food - 1) +
-            [LABEL2ID["B-QTY"], LABEL2ID["B-PRICE"]]
-        )
-    elif style == 2:
-        # "STRAWBERRIES 1 LB @2.99/LB"
-        tokens = food_full.upper().split() + [str(qty), unit]
-        n_food = len(food_full.split())
-        tags = (
-            [LABEL2ID["B-FOOD"]] +
-            [LABEL2ID["I-FOOD"]] * (n_food - 1) +
-            [LABEL2ID["B-QTY"], LABEL2ID["B-UNIT"]]
-        )
-    else:
-        # "2 CHKN BRST 5.99"
-        food_tokens = food_abbr.split()
-        tokens = [str(qty)] + food_tokens + [str(price)]
-        n_food = len(food_tokens)
-        tags = (
-            [LABEL2ID["B-QTY"]] +
-            [LABEL2ID["B-FOOD"]] +
-            [LABEL2ID["I-FOOD"]] * (n_food - 1) +
-            [LABEL2ID["B-PRICE"]]
-        )
-
-    return {"tokens": tokens, "ner_tags": tags}
-
-
-def add_ocr_noise(tokens: list[str], prob: float = 0.05) -> list[str]:
-    """Simulate common TrOCR output errors."""
-    noise_map = {"0": "O", "O": "0", "1": "I", "l": "1", "S": "5"}
-    noisy = []
-    for token in tokens:
-        chars = list(token)
-        for i, c in enumerate(chars):
-            if random.random() < prob and c in noise_map:
-                chars[i] = noise_map[c]
-        noisy.append("".join(chars))
-    return noisy
-
-
-def generate_synthetic_dataset(n: int = 5000) -> list[dict]:
-    examples = []
-    for _ in range(n):
-        ex = generate_synthetic_line()
-        ex["tokens"] = add_ocr_noise(ex["tokens"])
-        examples.append(ex)
-    print(f"Synthetic: {len(examples)} lines generated")
-    return examples
+UNITS = ["LB", "OZ", "GAL", "GL", "CT", "PK", "EA", "BAG", "BTL", "BX", "CAN", "DOZ", "PT", "QT"]
+PRICE_RANGE = (0.49, 24.99)
 ```
 
 ---
@@ -862,6 +783,7 @@ Fits easily in one Kaggle session.
 - **`ground_truth` is a JSON string** — `json.loads()` before accessing any keys.
 - **TASTEset uses `B-QUANTITY` not `B-QTY`** — remap on load or labels won't match your schema.
 - **ONNX load path:** `main_export` saves to `./models/distilbert_ner_onnx/model.onnx` — load with that exact path, not `models/distilbert_ner.onnx`.
+- **`KeyError: 'I-QTY'`** — BIO logic in `load_cord_ner` was generating `I-QTY`/`I-UNIT`/`I-PRICE` continuation tags. Only `FOOD` entities span multiple tokens — QTY/UNIT/PRICE are always single-token, always use `B-` prefix. Fixed in loader.
 - **SROIE NER tags** (COMPANY/DATE/ADDRESS/TOTAL) have no food entity overlap — don't use them for NER training.
 - **Kaggle disk:** NER datasets are tiny compared to image datasets. No disk issues expected here.
 
