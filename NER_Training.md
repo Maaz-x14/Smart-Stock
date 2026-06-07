@@ -1,7 +1,7 @@
 # NER_Training.md — DistilBERT NER Fine-Tuning Guide
 ## Smart-Stock: Stage 2 — Named Entity Recognition
 
-**Version:** 1.3 (Resume from checkpoint fixes: paths cell, model init, ONNX path)  
+**Version:** 1.4 (Optuna results, ONNX opset fix, recommended hyperparams)  
 **Training Environment:** Kaggle (T4 GPU)  
 **Model:** `distilbert-base-uncased` → token classification
 
@@ -599,7 +599,7 @@ main_export(
     model_name_or_path=save_path,
     output="./models/distilbert_ner_onnx/",
     task="token-classification",
-    opset=14,
+    opset=18,  # minimum recommended for distilbert is 18 (14 causes warning)
 )
 # Rename output: distilbert_ner_onnx/model.onnx → distilbert_ner.onnx
 # Matches ml_service/models/ structure from ML_Pipeline.md
@@ -688,9 +688,19 @@ best_run = search_trainer.hyperparameter_search(
 )
 
 print("Best hyperparameters:", best_run.hyperparameters)
-# Apply best params and retrain full dataset if Δf1 > 0.02
-for k, v in best_run.hyperparameters.items():
+
+# Apply best params for final full training run
+# NOTE: Prefer batch=32 over batch=64 — batch=64 underconverges on small search subset
+# If best trial used batch=64, consider overriding with batch=32
+recommended = {
+    "learning_rate": 2.4030906082694194e-05,
+    "per_device_train_batch_size": 32,
+    "warmup_ratio": 0.09203872502951205,
+    "weight_decay": 0.014083492139621796,
+}
+for k, v in recommended.items():
     setattr(training_args, k, v)
+print("Applied recommended hyperparameters:", recommended)
 ```
 
 ---
@@ -814,6 +824,8 @@ Fits easily in one Kaggle session.
 - **TASTEset uses `B-QUANTITY` not `B-QTY`** — remap on load or labels won't match your schema.
 - **ONNX load path:** `main_export` saves to `./models/distilbert_ner_onnx/model.onnx` — load with that exact path, not `models/distilbert_ner.onnx`.
 - **`KeyError: 'I-QTY'`** — BIO logic in `load_cord_ner` was generating `I-QTY`/`I-UNIT`/`I-PRICE` continuation tags. Only `FOOD` entities span multiple tokens — QTY/UNIT/PRICE are always single-token, always use `B-` prefix. Fixed in loader.
+- **`Opset 14 is lower than recommended minimum opset (18)`** — use `opset=18` in `main_export`. Opset 14 may produce suboptimal ONNX.
+- **Optuna picks batch=64 as best** — misleading when search subset is small (150 total steps). Prefer batch=32 which trains with more steps and generalizes better to full dataset.
 - **`NER_DATASET` not defined** — define `NER_DATASET` and `RESUME_FROM` in a paths cell at the very top of the notebook, before any other cell uses them.
 - **Loading base model then resuming from checkpoint** — don't call `from_pretrained(MODEL_CHECKPOINT)` when resuming. Load directly from the checkpoint path — this preserves fine-tuned weights correctly.
 - **ONNX session path when resuming** — the ONNX model lives at `./models/distilbert_ner_onnx/model.onnx` (local export), not inside the `NER_DATASET` input path.
