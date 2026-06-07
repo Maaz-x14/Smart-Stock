@@ -485,11 +485,13 @@ trainer = Seq2SeqTrainer(
     compute_metrics=compute_metrics,
 )
 
-# Resume from latest checkpoint if one exists (avoids retraining from scratch on reruns)
-# Run 1 timed out at step 17,478/19,420 — resume from checkpoint-15536
-checkpoint_dir = Path("./trocr-smart-stock")
+# Resume from checkpoint — checks Kaggle input dataset first, then local working dir
+CHECKPOINT_INPUT = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-checkpoints/trocr-smart-stock")
+checkpoint_dir   = CHECKPOINT_INPUT if CHECKPOINT_INPUT.exists() else Path("./trocr-smart-stock")
+
 checkpoints = sorted(checkpoint_dir.glob("checkpoint-*")) if checkpoint_dir.exists() else []
 resume_from = str(checkpoints[-1]) if checkpoints else None
+
 if resume_from:
     print(f"Resuming from: {resume_from}")
 else:
@@ -546,25 +548,46 @@ for folder in ["smart_stock_dataset_v2", "trocr-smart-stock-best"]:
 
 #### ⚠️ How to permanently save outputs on Kaggle
 
-**Quick Save does NOT save output files — it only saves notebook code.** The `/kaggle/working/` directory is wiped when the session ends unless you use Save & Run All.
+**Quick Save = code only. Save & Run All = outputs committed.** Everything in `/kaggle/working/` gets committed as output after Save & Run All completes.
+
+**Yes, save models as Kaggle datasets** — checkpoints, best models, preprocessed datasets. Anything you want to reuse goes into a Kaggle dataset. It's just a file store.
+
+**What to save and dataset names to use:**
+
+| Output folder | Kaggle dataset name |
+|---|---|
+| `smart_stock_dataset_v2/` | `smart-stock-dataset-v2` |
+| `trocr-smart-stock/` (checkpoints folder) | `trocr-smart-stock-checkpoints` |
+| `trocr-smart-stock-best/` (final model) | `trocr-smart-stock-best` |
 
 **Correct workflow:**
 1. Make sure the save cell above is the last cell in your notebook
 2. Click **"Save Version"** → **"Save & Run All"**
-3. Wait for the full run to complete (~12 hours)
-4. After completion, go to your notebook page on kaggle.com → **Output** section
-5. Click the three dots next to `smart_stock_dataset` → **"Create Dataset"** — repeat for `trocr-smart-stock-best`
-6. These become permanent Kaggle datasets — attach them to any future notebook via **Add Input**
+3. After completion, go to your notebook page on kaggle.com → **Output** section
+4. Click three dots next to each folder → **"Create Dataset"**
+5. Attach in future sessions via **Add Input** → search dataset name
 
-**Loading in future sessions once saved as datasets:**
+**Loading in future sessions:**
 ```python
-# Dataset
-SAVE_PATH = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/smart_stock_dataset_v2")
+# Line-crop dataset (built once, reuse forever)
+# Kaggle input path format: /kaggle/input/datasets/{username}/{dataset-name}/{folder}
+SAVE_PATH = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v2/smart_stock_dataset_v2")
+if not SAVE_PATH.exists():
+    SAVE_PATH = Path("/kaggle/working/smart_stock_dataset_v2")  # fallback if rebuilding
 
-# Model
-model = VisionEncoderDecoderModel.from_pretrained("/kaggle/input/trocr-smart-stock-best")
-processor = TrOCRProcessor.from_pretrained("/kaggle/input/trocr-smart-stock-best")
+# Resume training from saved checkpoint
+resume_from = "/kaggle/input/datasets/maazahmad69/trocr-smart-stock-checkpoints/trocr-smart-stock/checkpoint-15536"
+
+# Load final trained model (after training completes)
+model = VisionEncoderDecoderModel.from_pretrained(
+    "/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/trocr-smart-stock-best"
+)
+processor = TrOCRProcessor.from_pretrained(
+    "/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/trocr-smart-stock-best"
+)
 ```
+
+> **Path format reminder:** Kaggle input paths follow `/kaggle/input/datasets/{username}/{dataset-slug}/{folder-name}`. Always verify by printing `os.listdir("/kaggle/input/datasets/maazahmad69/")` after attaching.
 
 ---
 

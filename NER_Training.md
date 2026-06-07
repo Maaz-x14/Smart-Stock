@@ -674,7 +674,10 @@ main_export(
 import onnxruntime as ort
 import numpy as np
 
-session = ort.InferenceSession("./models/distilbert_ner_onnx/model.onnx")  # path matches main_export output dir
+# Local path (during training session)
+session = ort.InferenceSession("./models/distilbert_ner_onnx/model.onnx")
+# From Kaggle dataset (future sessions)
+# session = ort.InferenceSession("/kaggle/input/datasets/maazahmad69/distilbert-ner-onnx/model.onnx")
 
 def run_ner_onnx(tokens: list[str]) -> list[str]:
     encoding = tokenizer(
@@ -769,7 +772,45 @@ NER datasets are text-only — negligible disk vs TrOCR image tensors. Full pre-
 ### Save Strategy
 - **Quick Save** → code only
 - **Save & Run All** → commits `/kaggle/working/` as output
-- Save best model as Kaggle dataset: `distilbert-ner-smart-stock-best`
+- **Yes, save models as Kaggle datasets** — same as OCR stage. Anything you want to reuse.
+
+**What to save and dataset names:**
+
+| Output | How to save |
+|---|---|
+| Everything in output (`distilbert-ner-smart-stock-best/`, `distilbert-ner-smart-stock/`, `models/`) | One combined Kaggle dataset named `distilbert-ner-smart-stock` — Kaggle bundles all output folders together |
+
+**Loading in future sessions:**
+```python
+# All NER outputs are saved in one combined Kaggle dataset: distilbert-ner-smart-stock
+# Subfolders inside it match the output folder names exactly
+
+# Load best model
+from transformers import AutoModelForTokenClassification, AutoTokenizer
+
+NER_DATASET = "/kaggle/input/datasets/maazahmad69/distilbert-ner-smart-stock"
+
+model = AutoModelForTokenClassification.from_pretrained(
+    f"{NER_DATASET}/distilbert-ner-smart-stock-best"
+)
+tokenizer = AutoTokenizer.from_pretrained(
+    f"{NER_DATASET}/distilbert-ner-smart-stock-best"
+)
+
+# Load ONNX model
+import onnxruntime as ort
+session = ort.InferenceSession(
+    f"{NER_DATASET}/models/distilbert_ner_onnx/model.onnx"
+)
+
+# Resume training from checkpoint
+resume_from = f"{NER_DATASET}/distilbert-ner-smart-stock/checkpoint-1365"
+trainer.train(resume_from_checkpoint=resume_from)
+```
+
+> **Verify paths after attaching:** `os.listdir("/kaggle/input/datasets/maazahmad69/distilbert-ner-smart-stock/")`
+
+> **Path format reminder:** Always verify with `os.listdir("/kaggle/input/datasets/maazahmad69/")` after attaching a dataset.
 
 ### Runtime Estimate (T4 GPU)
 | Phase | Duration |
