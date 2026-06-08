@@ -486,7 +486,8 @@ trainer = Seq2SeqTrainer(
 )
 
 # Resume from checkpoint — checks Kaggle input dataset first, then local working dir
-CHECKPOINT_INPUT = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-checkpoints/trocr-smart-stock")
+# Checkpoints saved inside smart-stock-dataset (same dataset as the line-crop dataset)
+CHECKPOINT_INPUT = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/trocr-smart-stock")
 checkpoint_dir   = CHECKPOINT_INPUT if CHECKPOINT_INPUT.exists() else Path("./trocr-smart-stock")
 
 checkpoints = sorted(checkpoint_dir.glob("checkpoint-*")) if checkpoint_dir.exists() else []
@@ -557,7 +558,7 @@ for folder in ["smart_stock_dataset_v2", "trocr-smart-stock-best"]:
 | Output folder | Kaggle dataset name |
 |---|---|
 | `smart_stock_dataset_v2/` | `smart-stock-dataset-v2` |
-| `trocr-smart-stock/` (checkpoints folder) | `trocr-smart-stock-checkpoints` |
+| `trocr-smart-stock/` (checkpoints) | `smart-stock-dataset` (update existing version — both dataset and checkpoints saved together) |
 | `trocr-smart-stock-best/` (final model) | `trocr-smart-stock-best` |
 
 **Correct workflow:**
@@ -576,7 +577,7 @@ if not SAVE_PATH.exists():
     SAVE_PATH = Path("/kaggle/working/smart_stock_dataset_v2")  # fallback if rebuilding
 
 # Resume training from saved checkpoint
-resume_from = "/kaggle/input/datasets/maazahmad69/trocr-smart-stock-checkpoints/trocr-smart-stock/checkpoint-15536"
+resume_from = "/kaggle/input/datasets/maazahmad69/smart-stock-dataset/trocr-smart-stock/checkpoint-15536"
 
 # Load final trained model (after training completes)
 model = VisionEncoderDecoderModel.from_pretrained(
@@ -711,6 +712,8 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 | RAM OOM with `keep_in_memory=True` / `OSError Errno 28` with `cache_file_name` | 31k preprocessed examples exceed both Kaggle RAM and disk. Final fix: use `TrOCRDataset(TorchDataset)` which preprocesses on-the-fly per item — zero disk, zero RAM accumulation, full dataset used |
 | `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained(...)` |
 | Kaggle session timeout before training ends | Save checkpoints every epoch (`save_strategy="epoch"`) and resume with `trainer.train(resume_from_checkpoint=True)` |
+| `AttributeError: 'NoneType' object has no attribute 'load_state_dict'` when resuming | Checkpoint was saved with `fp16=True` but session resumed without it. Ensure `fp16=True` is in `training_args` when resuming. The scaler state in the checkpoint requires fp16 to be active. |
+| `Missing keys: ['decoder.output_projection.weight']` | Harmless TrOCR architecture warning — this weight is not used during seq2seq generation. Safe to ignore. |
 | Output files lost after session ends | Quick Save only saves code, not outputs. Use **Save & Run All** to commit `/kaggle/working/` contents permanently. Then create Kaggle datasets from the Output tab. |
 | `UserWarning: Argument 'var_limit' not valid for GaussNoise` | Albumentations API changed — use `A.GaussNoise(p=0.4)` and `A.ImageCompression(p=0.4)` without named quality/variance args |
 | `warmup_ratio is deprecated` warning | Harmless for now, will be removed in transformers v5.2 — no action needed yet |
