@@ -1,5 +1,7 @@
 # ml_service/normalization/preprocessor.py
 
+# Strip noise before attempting any match
+
 STRIP_PREFIXES = {
     "ORG", "ORGC", "ORGANIC",
     "FF",                          # Fat-free
