@@ -28,7 +28,7 @@ TEST_CASES = [
     (["CORIANDER", "LEAVES"],      "Coriander"),
     # Pass 3 expected (novel tokens)
     (["ANDAY"],                    "Eggs"),          # Urdu for eggs
-    (["MACCHI"],                   "Salmon"),        # Urdu for fish (approximate)
+    (["MACCHI"],                   "Fish"),        # Urdu for fish (approximate)
     (["SAFAID", "MIRCH"],          "White Pepper"),  # Urdu — may not be in map
 ]
 
