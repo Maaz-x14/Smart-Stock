@@ -1863,6 +1863,58 @@ if __name__ == "__main__":
 
 ---
 
+### 11.9 SQLite (development / CI) — optional
+
+If you don't have Postgres available (local dev, quick CI runs, or prototype validation) you can use SQLite as a drop-in testing database. This is for development only — production should continue to use Postgres and Alembic migrations.
+
+- Set a local SQLite URL in your `.env` before running tests:
+
+```bash
+# .env (development)
+DATABASE_URL=sqlite:///./test_smartstock.db
+GROQ_API_KEY=gsk_...   # optional if you expect pass-3 calls
+```
+
+- Create the SQLite file and tables using SQLAlchemy (no Alembic run required for tests):
+
+```bash
+python - <<'PY'
+from app.models import Base
+from app.db import engine
+
+# Creates tables declared in app.models if they do not exist
+Base.metadata.create_all(bind=engine)
+print('SQLite DB and tables created.')
+PY
+```
+
+- Seed a minimal `shelf_life_reference` set for evaluate/test runs (you can reuse the full seed script, but it requires adding the project root to `sys.path` as documented). For ad-hoc testing you can insert one or two rows manually:
+
+```bash
+python - <<'PY'
+from app.db import SessionLocal
+from app.models import ShelfLifeReference
+
+db = SessionLocal()
+db.add(ShelfLifeReference(canonical_name='Strawberries', category='produce', storage_context='ambient', shelf_life_days_min=3, shelf_life_days_avg=5, shelf_life_days_max=7))
+db.add(ShelfLifeReference(canonical_name='Whole Milk', category='dairy', storage_context='refrigerated', shelf_life_days_min=5, shelf_life_days_avg=7, shelf_life_days_max=10))
+db.commit()
+db.close()
+print('Seeded minimal rows for evaluate.py')
+PY
+```
+
+- Run the evaluate harness pointing at the SQLite DB:
+
+```bash
+export $(cat .env | xargs)   # or source .env with a shell-friendly loader
+python -m ml_service.normalization.evaluate
+```
+
+Notes:
+- The SQLite workflow bypasses Alembic migrations — it's intended for fast, throwaway test runs. If you need to run the full seed script with many rows, run the script shown in `11.6` after adjusting its `sys.path` (the seed script works on SQLite too once tables exist).
+- `app.models` uses SQLAlchemy `func.now()` and standard Column types, so the same models work on SQLite for testing. If you use raw Postgres-specific SQL elsewhere, keep those confined to production-only scripts.
+
 ## Appendix: Troubleshooting
 
 | Issue | Fix |
