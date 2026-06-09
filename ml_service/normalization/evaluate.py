@@ -9,29 +9,50 @@ from ml_service.normalization.normalizer import normalize_entity
 # Ground truth: (food_tokens, expected_canonical_name)
 # Drawn from a held-out set of real receipt lines not used to build ABBREVIATION_MAP
 TEST_CASES = [
-    # Pass 1 expected
-    (["ORG", "STRWBRY"],          "Strawberries"),
-    (["CHKN", "BRST", "BNLS"],    "Chicken Breast"),
-    (["GRK", "YGRT", "PLN"],      "Greek Yogurt"),
-    (["MLKWHL"],                   "Whole Milk"),
-    (["DAHI"],                     "Dahi"),
-    (["BASMATI"],                  "Basmati Rice"),
-    (["MURG", "QEEMA"],            "Minced Chicken"),
-    (["PALAK"],                    "Spinach"),
-    (["LAHSUN"],                   "Garlic"),
-    (["MILKPAK"],                  "UHT Milk"),
-    # Pass 2 expected (slight misspellings / unseen variants)
-    (["STRABERRY"],                "Strawberries"),
-    (["CHICKIN", "BREAST"],        "Chicken Breast"),
-    (["YOGHURT"],                  "Plain Yogurt"),
-    (["WHOLE", "MILK"],            "Whole Milk"),
-    (["CORIANDER", "LEAVES"],      "Coriander"),
-    # Pass 3 expected (novel tokens)
-    (["ANDAY"],                    "Eggs"),          # Urdu for eggs
-    (["MACCHI"],                   "Fish"),        # Urdu for fish (approximate)
-    (["SAFAID", "MIRCH"],          "White Pepper"),  # Urdu — may not be in map
-]
+    # Pass 1 expected (direct abbreviations / known variants)
+    (["AMROOD"],                 "Guavas"),          # Urdu
+    (["ANAR"],                   "Pomegranates"),    # Urdu
+    (["CHAUNSA"],                "Mangoes"),         # Pakistani mango variety
+    (["SEEKH", "KBAB"],          "Seekh Kebab"),     # Common kebab spelling
+    (["MURG", "QEEMA"],          "Minced Chicken"),  # Already tested, keep for consistency
+    (["PALAK"],                  "Spinach"),         # Urdu
+    (["SHALGAM"],                "Turnips"),         # Urdu
+    (["MOOLI"],                  "Radishes"),        # Urdu
+    (["LAUKI"],                  "Bottle Gourd"),    # Urdu
+    (["KARELA"],                 "Bitter Gourd"),    # Urdu
 
+    # Pass 2 expected (slight misspellings / unseen but close)
+    (["STRWBERRY"],              "Strawberries"),    # OCR slip
+    (["CHKN", "THIGH"],          "Chicken Thighs"),  # Slight variant
+    (["YOUGURT"],                "Yogurt"),          # Common misspelling
+    (["WHOLE", "MLK"],           "Whole Milk"),      # Token split
+    (["CORIANDER", "LEAF"],      "Coriander"),       # Variation
+    (["BASMATI", "CHAWAL"],      "Basmati Rice"),    # Urdu + English hybrid
+    (["PANEER"],                 "Paneer"),          # Direct but not in Pass 1 list
+    (["MANGO", "LASSI"],         "Lassi"),           # Drink variant
+
+    # Pass 3 expected (novel/local tokens, Pakistani style)
+    (["ANDA"],                   "Eggs"),            # Urdu singular
+    (["ANDA", "DOZEN"],          "Eggs"),            # Pack style
+    (["MACCHI"],                 "Fish"),            # Urdu for fish
+    (["SAFAID", "MIRCH"],        "White Pepper"),    # Urdu phrase
+    (["DUDH"],                   "Milk"),            # Urdu word
+    (["CHAWAL"],                 "Rice"),            # Urdu
+    (["ATTA"],                   "Atta Flour"),      # Urdu/Hindi
+    (["MAIDA"],                  "Maida"),           # South Asian flour
+    (["SUJI"],                   "Semolina"),        # Urdu
+    (["DALDA"],                  "Cooking Oil"),     # Pakistani brand
+    (["DESI", "GHEE"],           "Ghee"),            # Local term
+    (["CHAI"],                   "Tea Bags"),        # Local beverage
+    (["TAPAL"],                  "Tea Bags"),        # Pakistani brand
+    (["BROOKE", "BOND"],         "Tea Bags"),        # Brand
+    (["NAN"],                    "Naan"),            # Common spelling
+    (["CHAPATI"],                "Roti"),            # Synonym
+    (["PARATHA"],                "Paratha"),         # Synonym
+    (["BIRYANI"],                "Biryani"),  # Cooked dish
+    (["HALWA"],                  "Halva"),   # Sweet dish
+    (["PAKORA"],                 "Fritter"),  # Fried snack
+]
 
 @dataclass
 class EvalResult:

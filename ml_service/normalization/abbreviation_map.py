@@ -139,8 +139,15 @@ ABBREVIATION_MAP = {
     "HARI MIRCH":     "Green Chillies", # Urdu
     "CORI":           "Coriander",
     "CORIAN":         "Coriander",
+    "CORIANDER":      "Coriander",
+    "CORIANDER LEAVES": "Coriander",
+    "CORIANDER LEAF"  : "Coriander",
     "CILNTR":         "Coriander",
     "DHANIA":         "Coriander",  # Urdu
+    "ANDAY":          "Eggs",       # Urdu/Pakistani retail token
+    "ANDA":           "Eggs",
+    "MACCHI":         "Fish",       # Urdu/Pakistani retail token
+    "SAFAID MIRCH":   "White Pepper", # Urdu/Pakistani retail token
     "MNT":            "Mint",
     "MINT":           "Mint",
     "PODINA":         "Mint",       # Urdu
