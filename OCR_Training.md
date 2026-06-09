@@ -1,24 +1,12 @@
 # Model_Training.md — Model Training Guide
 ## Smart-Stock: TrOCR + DistilBERT Fine-Tuning
 
-**Version:** 6.0 (Line-level crops, SROIE 2x weighting, Optuna, training args adjusted)  
+**Version:** 12.0 (Augmentation improved, strategies consolidated, TPU removed, doc cleaned)  
 **Training Environment:** Kaggle (T4/P100 GPU)  
 **Last Updated:** Based on live dataset audit + runtime error fixes
 
 ---
 
-## ⚠️ Critical Dataset Reality Check
-
-Before any code: here is what the two datasets actually contain and what role each plays.
-
-| Dataset | Fields | Usable For | NOT Usable For |
-|---|---|---|---|
-| `naver-clova-ix/cord-v2` | `image` (PIL), `ground_truth` (JSON str) | **TrOCR fine-tuning** (image → line items text) | NER (no token-level tags) |
-| `sizhkhy/SROIE` | `words`, `bboxes`, `ner_tags`, `images`, `fields` | **TrOCR fine-tuning** (words → reconstruct text), **NER pre-training** | Food NER (tags are COMPANY/DATE/ADDRESS/TOTAL only) |
-
-The original notebook's `preprocess_trocr` function referenced `example["image_path"]` and `example["text"]` — **neither field exists in either dataset**. The corrected pipeline is below.
-
----
 
 ## Part 1: TrOCR Fine-Tuning
 
@@ -264,12 +252,14 @@ import numpy as np
 from PIL import Image, ImageOps
 
 receipt_augmentation = A.Compose([
-    A.RandomBrightnessContrast(brightness_limit=(-0.3, 0.1), p=0.5),  # Thermal fade
-    A.GaussNoise(p=0.4),                                               # Scanner noise
-    A.Rotate(limit=5, border_mode=cv2.BORDER_REPLICATE, p=0.5),        # Crumple tilt
-    A.Perspective(scale=(0.02, 0.05), p=0.3),                          # Photo angle
-    A.MotionBlur(blur_limit=3, p=0.2),                                 # Shaky photo
-    A.ImageCompression(p=0.4),                                         # JPEG artifact
+    A.RandomBrightnessContrast(brightness_limit=(-0.4, 0.15), p=0.6), # Stronger thermal fade
+    A.GaussNoise(p=0.5),                                               # Scanner noise
+    A.Rotate(limit=8, border_mode=cv2.BORDER_REPLICATE, p=0.5),        # Crumple tilt
+    A.Perspective(scale=(0.02, 0.08), p=0.4),                          # Photo angle
+    A.MotionBlur(blur_limit=5, p=0.3),                                 # Shaky photo
+    A.ImageCompression(p=0.5),                                         # JPEG artifact
+    A.GaussianBlur(blur_limit=(3, 5), p=0.3),                          # Focus blur
+    A.RandomShadow(p=0.2),                                             # Shadows on receipt
 ])
 
 def apply_augmentation(pil_image: Image.Image) -> Image.Image:
@@ -285,9 +275,8 @@ def apply_augmentation(pil_image: Image.Image) -> Image.Image:
 
 ---
 
-### 1.4 Preprocessing Function (Corrected)
+### 1.4 Preprocessing Function
 
-This replaces the broken version in your current notebook:
 
 ```python
 import io
@@ -620,21 +609,29 @@ Kaggle sessions cap at 12 hours. Observed: ~10:47 for 10 epochs on T4 with dual 
 
 **Run 1 result:** Session timed out at step 17,478/19,420 (90% complete). Resumed from checkpoint-15536 in draft session.
 
-**Run 2 results (resumed from checkpoint-15536):**
+**Run 2 results (resumed from checkpoint-17478, full 10 epochs complete):**
 
-| Epoch | Train Loss | Val Loss | CER | WER |
-|---|---|---|---|---|
-| 9 | 1.9016 | 0.4853 | **0.140** | **0.250** |
+| Epoch | Val Loss | CER | WER |
+|---|---|---|---|
+| 1 | 1.1757 | 0.2688 | 0.4169 |
+| 6 | 0.5300 | 0.1461 | 0.2712 |
+| 8 | 0.4867 | **0.1330** | **0.2476** |
+| 10 | 0.4760 | 0.1347 | 0.2476 |
 
-CER dropped from 0.757 (full-image baseline) → 0.140 at epoch 9. Line crops confirmed as the critical fix. Final epoch 10 expected to push CER below 0.13. After full run: run Optuna search.
+**Best checkpoint:** epoch 8 (CER: 0.133, checkpoint-15536). CER dropped from 0.757 (full images) → 0.133. Line crops confirmed as critical fix.
+
+**Test set:** CER: 1.692 | WER: 1.795 ⚠️ Large distribution gap — val 0.133 vs test 1.692. CORD/SROIE test receipts differ from training distribution. Next step: run Optuna to find best hyperparams, then evaluate if gap closes.
 
 ---
 
+
 ## Part 1b: Hyperparameter Search with Optuna
 
-After the first clean training run with line crops, use Optuna (Bayesian optimization) via HuggingFace built-in `hyperparameter_search` to find optimal values.
+Use Optuna (Bayesian optimization) via HuggingFace built-in `hyperparameter_search` to find optimal values for the next training run.
 
-> Run Optuna **after** confirming line-crop training improves CER baseline. No point searching on a broken dataset.
+> **Time estimate on T4:** Each trial trains on 20% data (~6,200 examples) for 10 epochs ≈ ~25 min per trial. 10 trials ≈ ~4 hours. Fits within Kaggle's 12-hour session limit.
+>
+> **Important:** `predict_with_generate=False` during Optuna search — generation is slow and we only need loss to rank trials. Re-enable for final training.
 
 ```python
 # !pip install optuna -q
@@ -658,12 +655,22 @@ def model_init():
     m.generation_config.num_beams            = 4
     return m
 
-# Search on 20% of train data for speed
-search_train = train_dataset.select(range(len(train_dataset) // 5))
+# Use HF dataset (combined_dataset) not TorchDataset for .select()
+# TrOCRDataset is a PyTorch Dataset — it has no .select() method
+# Search args — disable predict_with_generate for speed (eval loss only, no generation)
+import copy
+search_args = copy.deepcopy(training_args)
+search_args.predict_with_generate = False
+search_args.num_train_epochs = 10  # full epochs on subset
+
+# Use HF dataset .select() then wrap in TrOCRDataset
+# TrOCRDataset has no .select() — must use combined_dataset (HF dataset) directly
+search_hf    = combined_dataset["train"].select(range(len(combined_dataset["train"]) // 5))
+search_train = TrOCRDataset(search_hf, augment=True)
 
 search_trainer = Seq2SeqTrainer(
     model_init=model_init,
-    args=training_args,
+    args=search_args,
     train_dataset=search_train,
     eval_dataset=val_dataset,
     data_collator=collate_fn,
@@ -678,8 +685,11 @@ best_run = search_trainer.hyperparameter_search(
 )
 
 print("Best hyperparameters:", best_run.hyperparameters)
+# Apply to training_args for final full training run
 for k, v in best_run.hyperparameters.items():
     setattr(training_args, k, v)
+# Re-enable generation for final training
+training_args.predict_with_generate = True
 ```
 
 ---
@@ -717,4 +727,6 @@ Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be
 | Output files lost after session ends | Quick Save only saves code, not outputs. Use **Save & Run All** to commit `/kaggle/working/` contents permanently. Then create Kaggle datasets from the Output tab. |
 | `UserWarning: Argument 'var_limit' not valid for GaussNoise` | Albumentations API changed — use `A.GaussNoise(p=0.4)` and `A.ImageCompression(p=0.4)` without named quality/variance args |
 | `warmup_ratio is deprecated` warning | Harmless for now, will be removed in transformers v5.2 — no action needed yet |
+| `AttributeError: 'TrOCRDataset' object has no attribute 'select'` | `TrOCRDataset` is a PyTorch Dataset — no `.select()`. Use `combined_dataset["train"].select(...)` (HF dataset) then wrap in `TrOCRDataset()` |
+| Test CER much higher than val CER | Distribution gap between training data (CORD/SROIE receipts) and test set. Run Optuna first — if gap persists after best hyperparams, consider expanding data or increasing augmentation strength |
 | CORD train: 0 crops extracted | `quad` is NOT in `gt_parse.menu` — it's in `valid_line[].words[].quad`. Use `valid_line` grouped by `group_id` to extract crops, not `menu` items |
