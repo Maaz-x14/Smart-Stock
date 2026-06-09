@@ -1,6 +1,12 @@
 # db/seeds/shelf_life_seed.py
 # Run once: python -m db.seeds.shelf_life_seed
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+from app.models import ShelfLifeReference
+from app.db import SessionLocal
+
 SHELF_LIFE_DATA = [
     # (canonical_name, category, storage_context, min_days, avg_days, max_days, notes)
 
@@ -297,8 +303,10 @@ def seed_shelf_life(db_session):
     Safe to run multiple times — skips rows that already exist.
     Call from your Alembic migration or a one-time setup script.
     """
+    
     from app.models import ShelfLifeReference
 
+    db = SessionLocal()
     inserted = 0
     for row in SHELF_LIFE_DATA:
         canonical_name, category, storage_context, min_d, avg_d, max_d, notes = row
@@ -320,3 +328,9 @@ def seed_shelf_life(db_session):
 
     db_session.commit()
     print(f"Seeded {inserted} shelf_life_reference rows ({len(SHELF_LIFE_DATA) - inserted} already existed)")
+    db.close()
+
+if __name__ == "__main__":
+    db = SessionLocal()
+    seed_shelf_life(db)
+    db.close()
