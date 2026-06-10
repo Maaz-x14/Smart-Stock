@@ -29,3 +29,12 @@ class NormalizationCache(Base):
     source         = Column(String(20),  nullable=False, default="llm")
     created_at     = Column(DateTime,    nullable=False, server_default=func.now())
     hit_count      = Column(Integer,     nullable=False, default=1)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(120), unique=True, nullable=False)
+    name = Column(String(100))
+    created_at = Column(DateTime, server_default=func.now())
