@@ -1,0 +1,913 @@
+{
+    "tags": [],
+    "description": "",
+    "objects": [
+        {
+            "id": 1164084600,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:40:11.690Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339941,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "CHRIS'S HAMBURGERS",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:40:37.258Z",
+                    "updatedAt": "2022-12-19T10:40:37.258Z"
+                },
+                {
+                    "id": 163339942,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business name",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:40:20.960Z",
+                    "updatedAt": "2022-12-19T10:40:20.960Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        178.0,
+                        80.0
+                    ],
+                    [
+                        441.0,
+                        107.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084599,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:40:44.172Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339939,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "7701 ATLANTIC AVE.",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:41:01.544Z",
+                    "updatedAt": "2022-12-19T10:41:01.544Z"
+                },
+                {
+                    "id": 163339940,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:40:50.292Z",
+                    "updatedAt": "2022-12-19T10:40:50.292Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        178.0,
+                        114.0
+                    ],
+                    [
+                        424.0,
+                        139.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084598,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:41:09.196Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339937,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "CUDAHY CA. 90201",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:41:30.616Z",
+                    "updatedAt": "2022-12-19T10:41:30.616Z"
+                },
+                {
+                    "id": 163339938,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:41:17.560Z",
+                    "updatedAt": "2022-12-19T10:41:17.560Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        208.0,
+                        146.0
+                    ],
+                    [
+                        428.0,
+                        173.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084597,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:41:39.440Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339935,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Ph (323) 562-4125",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:41:58.593Z",
+                    "updatedAt": "2022-12-19T10:41:58.593Z"
+                },
+                {
+                    "id": 163339936,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business phone",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:41:45.110Z",
+                    "updatedAt": "2022-12-19T10:41:45.110Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        194.0,
+                        181.0
+                    ],
+                    [
+                        400.0,
+                        209.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084596,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:42:05.443Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339933,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Time and date",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:42:11.341Z",
+                    "updatedAt": "2022-12-19T10:42:11.341Z"
+                },
+                {
+                    "id": 163339934,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "DATE 07/22/2018",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:42:20.209Z",
+                    "updatedAt": "2022-12-19T10:42:20.209Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        167.0,
+                        353.0
+                    ],
+                    [
+                        459.0,
+                        382.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084595,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:42:29.329Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339931,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $21.49",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:43:07.832Z",
+                    "updatedAt": "2022-12-19T10:43:07.832Z"
+                },
+                {
+                    "id": 163339932,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:42:39.020Z",
+                    "updatedAt": "2022-12-19T10:42:39.020Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        170.0,
+                        423.0
+                    ],
+                    [
+                        457.0,
+                        448.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084594,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:43:18.821Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339929,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $0.50",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:43:35.123Z",
+                    "updatedAt": "2022-12-19T10:43:35.123Z"
+                },
+                {
+                    "id": 163339930,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:43:25.128Z",
+                    "updatedAt": "2022-12-19T10:43:25.128Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        172.0,
+                        455.0
+                    ],
+                    [
+                        460.0,
+                        483.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084593,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:43:47.988Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339927,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:43:54.085Z",
+                    "updatedAt": "2022-12-19T10:43:54.085Z"
+                },
+                {
+                    "id": 163339928,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $0.50",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:44:02.817Z",
+                    "updatedAt": "2022-12-19T10:44:02.817Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        173.0,
+                        487.0
+                    ],
+                    [
+                        460.0,
+                        519.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084592,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:44:10.215Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339925,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:44:15.368Z",
+                    "updatedAt": "2022-12-19T10:44:15.368Z"
+                },
+                {
+                    "id": 163339926,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $0.50",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:44:20.548Z",
+                    "updatedAt": "2022-12-19T10:44:20.548Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        176.0,
+                        521.0
+                    ],
+                    [
+                        460.0,
+                        553.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084591,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:44:28.114Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339923,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $0.50",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:44:40.997Z",
+                    "updatedAt": "2022-12-19T10:44:40.997Z"
+                },
+                {
+                    "id": 163339924,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:44:35.491Z",
+                    "updatedAt": "2022-12-19T10:44:35.491Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        176.0,
+                        556.0
+                    ],
+                    [
+                        460.0,
+                        586.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084590,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:44:49.714Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339921,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $7.89",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:45:02.115Z",
+                    "updatedAt": "2022-12-19T10:45:02.115Z"
+                },
+                {
+                    "id": 163339922,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:44:54.478Z",
+                    "updatedAt": "2022-12-19T10:44:54.478Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        178.0,
+                        589.0
+                    ],
+                    [
+                        460.0,
+                        621.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084589,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:45:11.145Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339919,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $3.09",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:45:21.935Z",
+                    "updatedAt": "2022-12-19T10:45:21.935Z"
+                },
+                {
+                    "id": 163339920,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:45:15.424Z",
+                    "updatedAt": "2022-12-19T10:45:15.424Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        175.0,
+                        620.0
+                    ],
+                    [
+                        460.0,
+                        657.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084588,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:45:29.584Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339917,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:45:34.148Z",
+                    "updatedAt": "2022-12-19T10:45:34.148Z"
+                },
+                {
+                    "id": 163339918,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $5.49",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:45:42.714Z",
+                    "updatedAt": "2022-12-19T10:45:42.714Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        177.0,
+                        654.0
+                    ],
+                    [
+                        462.0,
+                        691.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084587,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:45:52.450Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339915,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:45:56.860Z",
+                    "updatedAt": "2022-12-19T10:45:56.860Z"
+                },
+                {
+                    "id": 163339916,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $5.49",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:46:03.410Z",
+                    "updatedAt": "2022-12-19T10:46:03.410Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        177.0,
+                        688.0
+                    ],
+                    [
+                        462.0,
+                        725.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084586,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:46:11.431Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339913,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $0.99",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:46:30.992Z",
+                    "updatedAt": "2022-12-19T10:46:30.992Z"
+                },
+                {
+                    "id": 163339914,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:46:23.133Z",
+                    "updatedAt": "2022-12-19T10:46:23.133Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        180.0,
+                        720.0
+                    ],
+                    [
+                        464.0,
+                        759.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084585,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:46:39.591Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339911,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAXABLE T1 $0.99",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:46:51.472Z",
+                    "updatedAt": "2022-12-19T10:46:51.472Z"
+                },
+                {
+                    "id": 163339912,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:46:44.600Z",
+                    "updatedAt": "2022-12-19T10:46:44.600Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        179.0,
+                        754.0
+                    ],
+                    [
+                        465.0,
+                        796.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084584,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:47:00.573Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339909,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Tax",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:47:06.663Z",
+                    "updatedAt": "2022-12-19T10:47:06.663Z"
+                },
+                {
+                    "id": 163339910,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAX1 4.39",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:47:16.617Z",
+                    "updatedAt": "2022-12-19T10:47:16.617Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        181.0,
+                        787.0
+                    ],
+                    [
+                        464.0,
+                        827.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084583,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:47:26.146Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339907,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Total",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:47:30.992Z",
+                    "updatedAt": "2022-12-19T10:47:30.992Z"
+                },
+                {
+                    "id": 163339908,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TOTAL $51.82",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:47:39.819Z",
+                    "updatedAt": "2022-12-19T10:47:39.819Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        179.0,
+                        821.0
+                    ],
+                    [
+                        466.0,
+                        860.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084582,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:47:46.383Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339905,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:47:51.067Z",
+                    "updatedAt": "2022-12-19T10:47:51.067Z"
+                },
+                {
+                    "id": 163339906,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "CASH $51.82",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:47:59.968Z",
+                    "updatedAt": "2022-12-19T10:47:59.968Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        182.0,
+                        854.0
+                    ],
+                    [
+                        467.0,
+                        893.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084581,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:48:08.858Z",
+            "updatedAt": "2022-12-19T10:48:42.153Z",
+            "tags": [
+                {
+                    "id": 163339903,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:48:18.424Z",
+                    "updatedAt": "2022-12-19T10:48:18.424Z"
+                },
+                {
+                    "id": 163339904,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "CLERK 01 No 00154",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:48:32.547Z",
+                    "updatedAt": "2022-12-19T10:48:32.547Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        180.0,
+                        887.0
+                    ],
+                    [
+                        467.0,
+                        932.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164084580,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc2",
+            "createdAt": "2022-12-19T10:48:41.441Z",
+            "updatedAt": "2022-12-19T10:48:41.441Z",
+            "tags": [
+                {
+                    "id": 163339901,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Time and date",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:48:46.474Z",
+                    "updatedAt": "2022-12-19T10:48:46.474Z"
+                },
+                {
+                    "id": 163339902,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TIME 19.24 00",
+                    "labelerLogin": "drc2",
+                    "createdAt": "2022-12-19T10:48:55.128Z",
+                    "updatedAt": "2022-12-19T10:48:55.128Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        184.0,
+                        922.0
+                    ],
+                    [
+                        470.0,
+                        968.0
+                    ]
+                ],
+                "interior": []
+            }
+        }
+    ],
+    "size": {
+        "height": 1000,
+        "width": 750
+    }
+}

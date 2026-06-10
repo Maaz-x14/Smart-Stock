@@ -1,0 +1,1214 @@
+{
+    "tags": [],
+    "description": "",
+    "objects": [
+        {
+            "id": 1164086170,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:48:11.996Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343076,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "ESQUIRE GRILLE",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:48:21.641Z",
+                    "updatedAt": "2022-12-22T12:48:21.641Z"
+                },
+                {
+                    "id": 163343077,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business name",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:48:15.224Z",
+                    "updatedAt": "2022-12-22T12:48:15.224Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        127.0,
+                        34.0
+                    ],
+                    [
+                        205.0,
+                        47.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086169,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:48:32.660Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343074,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business name",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:48:52.781Z",
+                    "updatedAt": "2022-12-22T12:48:52.781Z"
+                },
+                {
+                    "id": 163343075,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "SACRAMENTO INTL AIRPORT",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:49:02.777Z",
+                    "updatedAt": "2022-12-22T12:49:02.777Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        98.0,
+                        42.0
+                    ],
+                    [
+                        227.0,
+                        58.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086168,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:49:13.059Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343072,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "147079 Jodi",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:49:45.931Z",
+                    "updatedAt": "2022-12-22T12:49:45.931Z"
+                },
+                {
+                    "id": 163343073,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:49:17.377Z",
+                    "updatedAt": "2022-12-22T12:49:17.377Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        74.0,
+                        57.0
+                    ],
+                    [
+                        137.0,
+                        72.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086167,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:49:56.061Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343070,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:50:00.422Z",
+                    "updatedAt": "2022-12-22T12:50:00.422Z"
+                },
+                {
+                    "id": 163343071,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "126/1 GST 2",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:50:11.066Z",
+                    "updatedAt": "2022-12-22T12:50:11.066Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        72.0,
+                        77.0
+                    ],
+                    [
+                        226.0,
+                        94.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086166,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:50:21.291Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343068,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "2144",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:50:33.031Z",
+                    "updatedAt": "2022-12-22T12:50:33.031Z"
+                },
+                {
+                    "id": 163343069,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:50:26.173Z",
+                    "updatedAt": "2022-12-22T12:50:26.173Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        139.0,
+                        89.0
+                    ],
+                    [
+                        183.0,
+                        102.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086165,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:50:55.631Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343066,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "APR04' 16 6:09PM",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:51:20.186Z",
+                    "updatedAt": "2022-12-22T12:51:20.186Z"
+                },
+                {
+                    "id": 163343067,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Time and date",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:51:03.061Z",
+                    "updatedAt": "2022-12-22T12:51:03.061Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        113.0,
+                        97.0
+                    ],
+                    [
+                        208.0,
+                        113.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086164,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:51:27.271Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343064,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "DINE IN",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:51:49.687Z",
+                    "updatedAt": "2022-12-22T12:51:49.687Z"
+                },
+                {
+                    "id": 163343065,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:51:32.674Z",
+                    "updatedAt": "2022-12-22T12:51:32.674Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        88.0,
+                        116.0
+                    ],
+                    [
+                        131.0,
+                        128.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086163,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:52:05.760Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343062,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "**** SEAT 1 ****",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:52:20.223Z",
+                    "updatedAt": "2022-12-22T12:52:20.223Z"
+                },
+                {
+                    "id": 163343063,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:52:10.863Z",
+                    "updatedAt": "2022-12-22T12:52:10.863Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        109.0,
+                        137.0
+                    ],
+                    [
+                        206.0,
+                        151.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086162,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:52:36.097Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343060,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:53:09.760Z",
+                    "updatedAt": "2022-12-22T12:53:09.760Z"
+                },
+                {
+                    "id": 163343061,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 DB WOODFRD RES Z 17.99",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:53:56.243Z",
+                    "updatedAt": "2022-12-22T12:53:56.243Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        72.0,
+                        144.0
+                    ],
+                    [
+                        236.0,
+                        165.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086161,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:54:43.416Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343058,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "NEAT",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:55:28.215Z",
+                    "updatedAt": "2022-12-22T12:55:28.215Z"
+                },
+                {
+                    "id": 163343059,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:55:21.692Z",
+                    "updatedAt": "2022-12-22T12:55:21.692Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        95.0,
+                        156.0
+                    ],
+                    [
+                        120.0,
+                        169.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086160,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:55:40.170Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343056,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:55:54.773Z",
+                    "updatedAt": "2022-12-22T12:55:54.773Z"
+                },
+                {
+                    "id": 163343057,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 CAB PEJU SAUV S 11.00",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:56:12.385Z",
+                    "updatedAt": "2022-12-22T12:56:12.385Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        69.0,
+                        165.0
+                    ],
+                    [
+                        235.0,
+                        186.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086159,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:56:56.272Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343054,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:57:02.019Z",
+                    "updatedAt": "2022-12-22T12:57:02.019Z"
+                },
+                {
+                    "id": 163343055,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Peju Cabernet Sauvignon",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:57:19.463Z",
+                    "updatedAt": "2022-12-22T12:57:19.463Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        79.0,
+                        177.0
+                    ],
+                    [
+                        223.0,
+                        195.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086158,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:57:27.421Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343052,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 SAND GRLD CHIX 14.50",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:57:59.700Z",
+                    "updatedAt": "2022-12-22T12:57:59.700Z"
+                },
+                {
+                    "id": 163343053,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:57:33.266Z",
+                    "updatedAt": "2022-12-22T12:57:33.266Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        67.0,
+                        187.0
+                    ],
+                    [
+                        235.0,
+                        207.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086157,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:59:31.744Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343050,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "SD CHOP SLD",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:59:44.575Z",
+                    "updatedAt": "2022-12-22T12:59:44.575Z"
+                },
+                {
+                    "id": 163343051,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T12:59:36.291Z",
+                    "updatedAt": "2022-12-22T12:59:36.291Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        89.0,
+                        198.0
+                    ],
+                    [
+                        159.0,
+                        213.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086156,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T12:59:58.549Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343048,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:00:04.500Z",
+                    "updatedAt": "2022-12-22T13:00:04.500Z"
+                },
+                {
+                    "id": 163343049,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "W/ DRS BLUE CHS",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:00:13.373Z",
+                    "updatedAt": "2022-12-22T13:00:13.373Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        87.0,
+                        210.0
+                    ],
+                    [
+                        183.0,
+                        226.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086155,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:00:19.814Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343046,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "DRESS ON SIDE",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:00:40.089Z",
+                    "updatedAt": "2022-12-22T13:00:40.089Z"
+                },
+                {
+                    "id": 163343047,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:00:23.672Z",
+                    "updatedAt": "2022-12-22T13:00:23.672Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        86.0,
+                        221.0
+                    ],
+                    [
+                        170.0,
+                        237.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086154,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:00:48.914Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343044,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 SLD SHRIMP LOUIE 24.00",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:01:57.873Z",
+                    "updatedAt": "2022-12-22T13:01:57.873Z"
+                },
+                {
+                    "id": 163343045,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:01:07.484Z",
+                    "updatedAt": "2022-12-22T13:01:07.484Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        59.0,
+                        231.0
+                    ],
+                    [
+                        234.0,
+                        252.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086153,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:02:07.592Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343042,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "W/ DRESS ON SIDE",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:02:20.148Z",
+                    "updatedAt": "2022-12-22T13:02:20.148Z"
+                },
+                {
+                    "id": 163343043,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:02:12.942Z",
+                    "updatedAt": "2022-12-22T13:02:12.942Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        83.0,
+                        243.0
+                    ],
+                    [
+                        188.0,
+                        263.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086152,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:02:29.545Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343040,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:02:38.941Z",
+                    "updatedAt": "2022-12-22T13:02:38.941Z"
+                },
+                {
+                    "id": 163343041,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 SD BRUSSEL SPRTS 7.00",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:02:58.270Z",
+                    "updatedAt": "2022-12-22T13:02:58.270Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        56.0,
+                        254.0
+                    ],
+                    [
+                        233.0,
+                        277.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086151,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:03:13.112Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343038,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Tax",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:03:17.944Z",
+                    "updatedAt": "2022-12-22T13:03:17.944Z"
+                },
+                {
+                    "id": 163343039,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAX 5.96 AMOUNT D 80.45",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:03:30.032Z",
+                    "updatedAt": "2022-12-22T13:03:30.032Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        40.0,
+                        265.0
+                    ],
+                    [
+                        233.0,
+                        289.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086150,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:03:47.193Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343036,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "SUB TOTAL 74.49",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:04:15.061Z",
+                    "updatedAt": "2022-12-22T13:04:15.061Z"
+                },
+                {
+                    "id": 163343037,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Subtotal",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:03:59.423Z",
+                    "updatedAt": "2022-12-22T13:03:59.423Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        60.0,
+                        304.0
+                    ],
+                    [
+                        232.0,
+                        328.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086149,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:04:24.623Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343034,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAX 5.96",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:04:36.208Z",
+                    "updatedAt": "2022-12-22T13:04:36.208Z"
+                },
+                {
+                    "id": 163343035,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Tax",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:04:29.952Z",
+                    "updatedAt": "2022-12-22T13:04:29.952Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        59.0,
+                        317.0
+                    ],
+                    [
+                        232.0,
+                        342.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086148,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:04:43.236Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343032,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "AMOUNT DUE $80 . 45",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:05:01.173Z",
+                    "updatedAt": "2022-12-22T13:05:01.173Z"
+                },
+                {
+                    "id": 163343033,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Total",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:04:50.293Z",
+                    "updatedAt": "2022-12-22T13:04:50.293Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        56.0,
+                        332.0
+                    ],
+                    [
+                        230.0,
+                        356.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086147,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:05:09.267Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343030,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "WE WANT TO HEAR YOUR FEEDBACK!",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:05:37.770Z",
+                    "updatedAt": "2022-12-22T13:05:37.770Z"
+                },
+                {
+                    "id": 163343031,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:05:15.272Z",
+                    "updatedAt": "2022-12-22T13:05:15.272Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        31.0,
+                        357.0
+                    ],
+                    [
+                        245.0,
+                        384.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086146,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:07:35.331Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343028,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "PLEASE CONTACT 1-877-672-7467",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:08:12.528Z",
+                    "updatedAt": "2022-12-22T13:08:12.528Z"
+                },
+                {
+                    "id": 163343029,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:07:52.330Z",
+                    "updatedAt": "2022-12-22T13:07:52.330Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        28.0,
+                        371.0
+                    ],
+                    [
+                        238.0,
+                        399.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086145,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:08:22.042Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343026,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business other information",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:08:26.701Z",
+                    "updatedAt": "2022-12-22T13:08:26.701Z"
+                },
+                {
+                    "id": 163343027,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "OR CUSTOMERSERVICE@HMSHOST.COM",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:08:42.299Z",
+                    "updatedAt": "2022-12-22T13:08:42.299Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        26.0,
+                        385.0
+                    ],
+                    [
+                        246.0,
+                        415.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086144,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:08:56.215Z",
+            "updatedAt": "2022-12-22T13:09:37.784Z",
+            "tags": [
+                {
+                    "id": 163343024,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TO SHARE YOUR EXPERIENCE",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:09:27.307Z",
+                    "updatedAt": "2022-12-22T13:09:27.307Z"
+                },
+                {
+                    "id": 163343025,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:09:12.371Z",
+                    "updatedAt": "2022-12-22T13:09:12.371Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        40.0,
+                        400.0
+                    ],
+                    [
+                        222.0,
+                        428.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164086143,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc9",
+            "createdAt": "2022-12-22T13:09:37.514Z",
+            "updatedAt": "2023-04-09T17:58:02.982Z",
+            "tags": [
+                {
+                    "id": 163343022,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:09:45.751Z",
+                    "updatedAt": "2022-12-22T13:09:45.751Z"
+                },
+                {
+                    "id": 163343023,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "STOREID: ",
+                    "labelerLogin": "drc9",
+                    "createdAt": "2022-12-22T13:09:53.943Z",
+                    "updatedAt": "2022-12-22T13:09:53.943Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        65.0,
+                        433.0
+                    ],
+                    [
+                        124.0,
+                        449.0
+                    ]
+                ],
+                "interior": []
+            }
+        }
+    ],
+    "size": {
+        "height": 450,
+        "width": 337
+    }
+}

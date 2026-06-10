@@ -1,0 +1,827 @@
+{
+    "tags": [],
+    "description": "",
+    "objects": [
+        {
+            "id": 1164087541,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T11:46:28.990Z",
+            "updatedAt": "2023-04-11T18:02:03.032Z",
+            "tags": [
+                {
+                    "id": 163345807,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business name",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:46:35.802Z",
+                    "updatedAt": "2022-12-17T11:46:35.802Z"
+                },
+                {
+                    "id": 163345808,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "POP TATES KORUM MALL",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:46:45.878Z",
+                    "updatedAt": "2022-12-17T11:46:45.878Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        160.0,
+                        64.0
+                    ],
+                    [
+                        289.0,
+                        81.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276277302,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T18:02:02.756Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 204886974,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "ANDHERI WEST",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T18:02:44.906Z",
+                    "updatedAt": "2023-04-11T18:02:44.906Z"
+                },
+                {
+                    "id": 204886969,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T18:02:06.984Z",
+                    "updatedAt": "2023-04-11T18:02:06.984Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        184.0,
+                        82.0
+                    ],
+                    [
+                        264.0,
+                        95.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087540,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T11:46:58.489Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345805,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:47:05.174Z",
+                    "updatedAt": "2022-12-17T11:47:05.174Z"
+                },
+                {
+                    "id": 163345806,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "KORUM MALL, 4TH FLOOR",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:47:17.470Z",
+                    "updatedAt": "2022-12-17T11:47:17.470Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        159.0,
+                        95.0
+                    ],
+                    [
+                        296.0,
+                        111.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087539,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T11:47:28.625Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345803,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:47:35.111Z",
+                    "updatedAt": "2022-12-17T11:47:35.111Z"
+                },
+                {
+                    "id": 163345804,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "MANGAL PANDEY RD, OFF EASTERN EXPRESS",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:47:52.413Z",
+                    "updatedAt": "2022-12-17T11:47:52.413Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        107.0,
+                        108.0
+                    ],
+                    [
+                        348.0,
+                        127.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087538,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T11:48:04.991Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345801,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:48:11.474Z",
+                    "updatedAt": "2022-12-17T11:48:11.474Z"
+                },
+                {
+                    "id": 163345802,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "THANE (W) 400606",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:48:22.357Z",
+                    "updatedAt": "2022-12-17T11:48:22.357Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        169.0,
+                        129.0
+                    ],
+                    [
+                        277.0,
+                        143.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087537,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T11:48:29.920Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345799,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TEL : 022 66737988",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:49:40.034Z",
+                    "updatedAt": "2022-12-17T11:49:40.034Z"
+                },
+                {
+                    "id": 163345800,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business phone",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:49:26.537Z",
+                    "updatedAt": "2022-12-17T11:49:26.537Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        165.0,
+                        144.0
+                    ],
+                    [
+                        284.0,
+                        158.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087536,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T11:49:48.249Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345797,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "ORDER NO : K00024585",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:50:40.449Z",
+                    "updatedAt": "2022-12-17T11:50:40.449Z"
+                },
+                {
+                    "id": 163345798,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T11:49:54.176Z",
+                    "updatedAt": "2022-12-17T11:49:54.176Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        90.0,
+                        156.0
+                    ],
+                    [
+                        225.0,
+                        174.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087535,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:35:20.172Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345795,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:35:26.554Z",
+                    "updatedAt": "2022-12-17T13:35:26.554Z"
+                },
+                {
+                    "id": 163345796,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "BILL NO DATE AND TIME PAX TABLE",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:35:45.554Z",
+                    "updatedAt": "2022-12-17T13:35:45.554Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        89.0,
+                        186.0
+                    ],
+                    [
+                        351.0,
+                        206.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087534,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:35:59.707Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345794,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Time and date",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:36:05.276Z",
+                    "updatedAt": "2022-12-17T13:36:05.276Z"
+                },
+                {
+                    "id": 163345793,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "B00006266 09/12/2012 6:14 PM 6 52",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:36:30.654Z",
+                    "updatedAt": "2022-12-17T13:36:30.654Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        88.0,
+                        202.0
+                    ],
+                    [
+                        331.0,
+                        222.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087533,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:36:41.942Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345791,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:36:55.074Z",
+                    "updatedAt": "2022-12-17T13:36:55.074Z"
+                },
+                {
+                    "id": 163345792,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "CASHIER :CASHIER",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:37:04.973Z",
+                    "updatedAt": "2022-12-17T13:37:04.973Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        86.0,
+                        220.0
+                    ],
+                    [
+                        197.0,
+                        238.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087532,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:37:15.834Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345789,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:37:23.219Z",
+                    "updatedAt": "2022-12-17T13:37:23.219Z"
+                },
+                {
+                    "id": 163345790,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "WAITER :WAITER",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:37:32.940Z",
+                    "updatedAt": "2022-12-17T13:37:32.940Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        85.0,
+                        236.0
+                    ],
+                    [
+                        183.0,
+                        254.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087531,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:37:42.222Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345787,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:37:47.169Z",
+                    "updatedAt": "2022-12-17T13:37:47.169Z"
+                },
+                {
+                    "id": 163345788,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Qty Menu Item Amount",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:37:57.761Z",
+                    "updatedAt": "2022-12-17T13:37:57.761Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        113.0,
+                        274.0
+                    ],
+                    [
+                        348.0,
+                        289.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087530,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:38:09.423Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345785,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "2 FRENCH FRIES 190.00",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:38:26.517Z",
+                    "updatedAt": "2022-12-17T13:38:26.517Z"
+                },
+                {
+                    "id": 163345786,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:38:15.354Z",
+                    "updatedAt": "2022-12-17T13:38:15.354Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        125.0,
+                        310.0
+                    ],
+                    [
+                        351.0,
+                        323.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087529,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:38:33.677Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345783,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 OPEN FOOD 60.00",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:38:49.895Z",
+                    "updatedAt": "2022-12-17T13:38:49.895Z"
+                },
+                {
+                    "id": 163345784,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:38:38.607Z",
+                    "updatedAt": "2022-12-17T13:38:38.607Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        124.0,
+                        327.0
+                    ],
+                    [
+                        352.0,
+                        339.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087528,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:39:00.232Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345781,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1.00 MANESH SAUS 60.00",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:39:15.529Z",
+                    "updatedAt": "2022-12-17T13:39:15.529Z"
+                },
+                {
+                    "id": 163345782,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:39:04.728Z",
+                    "updatedAt": "2022-12-17T13:39:04.728Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        102.0,
+                        345.0
+                    ],
+                    [
+                        354.0,
+                        359.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087527,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:39:27.161Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345779,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:39:32.175Z",
+                    "updatedAt": "2022-12-17T13:39:32.175Z"
+                },
+                {
+                    "id": 163345780,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 PANEER TIKKA 248.00",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:39:43.020Z",
+                    "updatedAt": "2022-12-17T13:39:43.020Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        122.0,
+                        366.0
+                    ],
+                    [
+                        356.0,
+                        378.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087526,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:39:50.458Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345777,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Subtotal",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:39:58.913Z",
+                    "updatedAt": "2022-12-17T13:39:58.913Z"
+                },
+                {
+                    "id": 163345778,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Total 498.00",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:40:10.073Z",
+                    "updatedAt": "2022-12-17T13:40:10.073Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        128.0,
+                        403.0
+                    ],
+                    [
+                        357.0,
+                        415.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087525,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:40:20.601Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345776,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Tax",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:40:31.041Z",
+                    "updatedAt": "2022-12-17T13:40:31.041Z"
+                },
+                {
+                    "id": 163345775,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "SERVICE TAX @ 4.94% 24.60",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:40:52.458Z",
+                    "updatedAt": "2022-12-17T13:40:52.458Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        125.0,
+                        442.0
+                    ],
+                    [
+                        361.0,
+                        457.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164087524,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc11",
+            "createdAt": "2022-12-17T13:41:04.254Z",
+            "updatedAt": "2023-04-11T18:03:02.336Z",
+            "tags": [
+                {
+                    "id": 163345773,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Grand Total 523.00",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:41:21.834Z",
+                    "updatedAt": "2022-12-17T13:41:21.834Z"
+                },
+                {
+                    "id": 163345774,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Total",
+                    "labelerLogin": "drc11",
+                    "createdAt": "2022-12-17T13:41:11.035Z",
+                    "updatedAt": "2022-12-17T13:41:11.035Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        124.0,
+                        483.0
+                    ],
+                    [
+                        364.0,
+                        499.0
+                    ]
+                ],
+                "interior": []
+            }
+        }
+    ],
+    "size": {
+        "height": 640,
+        "width": 480
+    }
+}

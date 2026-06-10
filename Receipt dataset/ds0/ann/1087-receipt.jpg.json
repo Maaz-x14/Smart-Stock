@@ -1,0 +1,526 @@
+{
+    "tags": [],
+    "description": "",
+    "objects": [
+        {
+            "id": 1164085339,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:06:40.208Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341419,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business name",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:06:54.440Z",
+                    "updatedAt": "2023-01-03T20:06:54.440Z"
+                },
+                {
+                    "id": 163341420,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "#Noches De Colombia",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:07:06.111Z",
+                    "updatedAt": "2023-01-03T20:07:06.111Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        56.0,
+                        57.0
+                    ],
+                    [
+                        140.0,
+                        82.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085338,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:07:19.094Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341417,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:07:25.425Z",
+                    "updatedAt": "2023-01-03T20:07:25.425Z"
+                },
+                {
+                    "id": 163341418,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "204 JERICHO TURNPIKE",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:07:38.387Z",
+                    "updatedAt": "2023-01-03T20:07:38.387Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        58.0,
+                        66.0
+                    ],
+                    [
+                        146.0,
+                        93.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085337,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:07:49.382Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341415,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business address",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:07:58.719Z",
+                    "updatedAt": "2023-01-03T20:07:58.719Z"
+                },
+                {
+                    "id": 163341416,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "MINEOLA, NY 11501",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:08:07.890Z",
+                    "updatedAt": "2023-01-03T20:08:07.890Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        64.0,
+                        80.0
+                    ],
+                    [
+                        139.0,
+                        102.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085336,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:08:18.693Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341413,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "(516)747-9861",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:08:41.953Z",
+                    "updatedAt": "2023-01-03T20:08:41.953Z"
+                },
+                {
+                    "id": 163341414,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business phone",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:08:26.031Z",
+                    "updatedAt": "2023-01-03T20:08:26.031Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        75.0,
+                        93.0
+                    ],
+                    [
+                        133.0,
+                        112.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085335,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:08:51.788Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341411,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Check:500592 Guest: 0",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:09:14.530Z",
+                    "updatedAt": "2023-01-03T20:09:14.530Z"
+                },
+                {
+                    "id": 163341412,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:08:58.231Z",
+                    "updatedAt": "2023-01-03T20:08:58.231Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        7.0,
+                        117.0
+                    ],
+                    [
+                        125.0,
+                        147.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085334,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:09:28.811Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341409,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Time and date",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:09:35.034Z",
+                    "updatedAt": "2023-01-03T20:09:35.034Z"
+                },
+                {
+                    "id": 163341410,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Date: 07/09/19 Time:09:22am",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:10:02.562Z",
+                    "updatedAt": "2023-01-03T20:10:02.562Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        11.0,
+                        128.0
+                    ],
+                    [
+                        131.0,
+                        158.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085333,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:10:19.444Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341407,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 Chicharron $6.00",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:10:41.219Z",
+                    "updatedAt": "2023-01-03T20:10:41.219Z"
+                },
+                {
+                    "id": 163341408,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:10:26.180Z",
+                    "updatedAt": "2023-01-03T20:10:26.180Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        27.0,
+                        140.0
+                    ],
+                    [
+                        229.0,
+                        188.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085332,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:11:04.130Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341405,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:11:10.815Z",
+                    "updatedAt": "2023-01-03T20:11:10.815Z"
+                },
+                {
+                    "id": 163341406,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 maduros $3.95",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:11:22.157Z",
+                    "updatedAt": "2023-01-03T20:11:22.157Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        29.0,
+                        152.0
+                    ],
+                    [
+                        232.0,
+                        198.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085331,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:11:39.270Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341403,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Subtotal",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:11:45.424Z",
+                    "updatedAt": "2023-01-03T20:11:45.424Z"
+                },
+                {
+                    "id": 163341404,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Subtotal: $9.95",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:11:58.831Z",
+                    "updatedAt": "2023-01-03T20:11:58.831Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        65.0,
+                        175.0
+                    ],
+                    [
+                        232.0,
+                        213.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085330,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:12:14.759Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341401,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Tax",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:12:21.751Z",
+                    "updatedAt": "2023-01-03T20:12:21.751Z"
+                },
+                {
+                    "id": 163341402,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Tax:: 0.86",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:12:33.265Z",
+                    "updatedAt": "2023-01-03T20:12:33.265Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        84.0,
+                        188.0
+                    ],
+                    [
+                        235.0,
+                        222.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085329,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:12:53.492Z",
+            "updatedAt": "2023-01-03T20:13:26.697Z",
+            "tags": [
+                {
+                    "id": 163341399,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Sbtl w/Tax: $10.81",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:13:11.936Z",
+                    "updatedAt": "2023-01-03T20:13:11.936Z"
+                },
+                {
+                    "id": 163341400,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:13:01.272Z",
+                    "updatedAt": "2023-01-03T20:13:01.272Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        61.0,
+                        203.0
+                    ],
+                    [
+                        237.0,
+                        236.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1164085328,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "drc5",
+            "createdAt": "2023-01-03T20:13:26.272Z",
+            "updatedAt": "2023-01-03T20:13:26.272Z",
+            "tags": [
+                {
+                    "id": 163341397,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Amt Due: $10.81",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:13:39.046Z",
+                    "updatedAt": "2023-01-03T20:13:39.046Z"
+                },
+                {
+                    "id": 163341398,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "drc5",
+                    "createdAt": "2023-01-03T20:13:30.631Z",
+                    "updatedAt": "2023-01-03T20:13:30.631Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        76.0,
+                        215.0
+                    ],
+                    [
+                        236.0,
+                        244.0
+                    ]
+                ],
+                "interior": []
+            }
+        }
+    ],
+    "size": {
+        "height": 258,
+        "width": 258
+    }
+}

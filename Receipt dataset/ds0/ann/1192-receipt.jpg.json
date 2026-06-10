@@ -1,0 +1,870 @@
+{
+    "tags": [],
+    "description": "",
+    "objects": [
+        {
+            "id": 1276298484,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:29:57.937Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890322,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business phone",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:30:13.941Z",
+                    "updatedAt": "2023-04-11T19:30:13.941Z"
+                },
+                {
+                    "id": 204890323,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "208.575.7454",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:30:25.480Z",
+                    "updatedAt": "2023-04-11T19:30:25.480Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        128.0,
+                        90.0
+                    ],
+                    [
+                        176.0,
+                        100.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298502,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:30:33.617Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890330,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:30:39.737Z",
+                    "updatedAt": "2023-04-11T19:30:39.737Z"
+                },
+                {
+                    "id": 204890345,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "28120 Jamell H",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:31:33.767Z",
+                    "updatedAt": "2023-04-11T19:31:33.767Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        93.0,
+                        106.0
+                    ],
+                    [
+                        151.0,
+                        117.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298550,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:31:44.310Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890347,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:31:50.577Z",
+                    "updatedAt": "2023-04-11T19:31:50.577Z"
+                },
+                {
+                    "id": 204890348,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Tbl 127/1 Chk 3885 Gst 3",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:32:15.413Z",
+                    "updatedAt": "2023-04-11T19:32:15.413Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        89.0,
+                        124.0
+                    ],
+                    [
+                        214.0,
+                        135.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298587,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:32:22.934Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890349,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:32:40.367Z",
+                    "updatedAt": "2023-04-11T19:32:40.367Z"
+                },
+                {
+                    "id": 204890350,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 CHIC TENO AP .55",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:33:12.090Z",
+                    "updatedAt": "2023-04-11T19:33:12.090Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        97.0,
+                        150.0
+                    ],
+                    [
+                        204.0,
+                        160.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298635,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:33:24.127Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890353,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:33:29.678Z",
+                    "updatedAt": "2023-04-11T19:33:29.678Z"
+                },
+                {
+                    "id": 204890366,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 RIBS 1/2 ST 18.95",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:33:48.488Z",
+                    "updatedAt": "2023-04-11T19:33:48.488Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        96.0,
+                        158.0
+                    ],
+                    [
+                        204.0,
+                        168.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298674,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:33:59.328Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890368,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:34:04.575Z",
+                    "updatedAt": "2023-04-11T19:34:04.575Z"
+                },
+                {
+                    "id": 204890371,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "1 BRG DELUXE 14.85",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:34:49.015Z",
+                    "updatedAt": "2023-04-11T19:34:49.015Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        96.0,
+                        167.0
+                    ],
+                    [
+                        204.0,
+                        177.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298723,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:35:01.608Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890372,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Item information",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:35:06.368Z",
+                    "updatedAt": "2023-04-11T19:35:06.368Z"
+                },
+                {
+                    "id": 204890374,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "K TIMING 9.95-",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:35:23.739Z",
+                    "updatedAt": "2023-04-11T19:35:23.739Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        102.0,
+                        176.0
+                    ],
+                    [
+                        207.0,
+                        188.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298747,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:35:31.620Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890375,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Subtotal",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:35:36.357Z",
+                    "updatedAt": "2023-04-11T19:35:36.357Z"
+                },
+                {
+                    "id": 204890378,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "SUBTOTAL 33.90",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:35:46.991Z",
+                    "updatedAt": "2023-04-11T19:35:46.991Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        102.0,
+                        194.0
+                    ],
+                    [
+                        206.0,
+                        203.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298768,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:35:53.741Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890381,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Tax",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:35:59.088Z",
+                    "updatedAt": "2023-04-11T19:35:59.088Z"
+                },
+                {
+                    "id": 204890384,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TAX 3.39",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:36:07.092Z",
+                    "updatedAt": "2023-04-11T19:36:07.092Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        102.0,
+                        204.0
+                    ],
+                    [
+                        206.0,
+                        213.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298780,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:36:17.119Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890386,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Total",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:36:22.282Z",
+                    "updatedAt": "2023-04-11T19:36:22.282Z"
+                },
+                {
+                    "id": 204890387,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "TOTAL DUE 37.29",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:36:35.282Z",
+                    "updatedAt": "2023-04-11T19:36:35.282Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        101.0,
+                        212.0
+                    ],
+                    [
+                        207.0,
+                        223.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298793,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:36:44.472Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890389,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "HAPPY HOUR",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:37:00.257Z",
+                    "updatedAt": "2023-04-11T19:37:00.257Z"
+                },
+                {
+                    "id": 204890388,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:36:49.026Z",
+                    "updatedAt": "2023-04-11T19:36:49.026Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        125.0,
+                        231.0
+                    ],
+                    [
+                        171.0,
+                        242.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298804,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:37:07.992Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890390,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:37:12.380Z",
+                    "updatedAt": "2023-04-11T19:37:12.380Z"
+                },
+                {
+                    "id": 204890393,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "MONDAY TO SATURDAY",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:37:29.200Z",
+                    "updatedAt": "2023-04-11T19:37:29.200Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        108.0,
+                        241.0
+                    ],
+                    [
+                        188.0,
+                        252.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298825,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:37:38.026Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890402,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:37:42.845Z",
+                    "updatedAt": "2023-04-11T19:37:42.845Z"
+                },
+                {
+                    "id": 204890407,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "3 pm to 6 pm and 9 pm to close",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:38:15.812Z",
+                    "updatedAt": "2023-04-11T19:38:15.812Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        92.0,
+                        251.0
+                    ],
+                    [
+                        220.0,
+                        262.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298854,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:38:23.758Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890413,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "SUNDAY HAPPY HOUR ALL DAY",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:38:47.597Z",
+                    "updatedAt": "2023-04-11T19:38:47.597Z"
+                },
+                {
+                    "id": 204890408,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:38:28.138Z",
+                    "updatedAt": "2023-04-11T19:38:28.138Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        91.0,
+                        261.0
+                    ],
+                    [
+                        199.0,
+                        271.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298868,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:38:54.565Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890415,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:39:00.375Z",
+                    "updatedAt": "2023-04-11T19:39:00.375Z"
+                },
+                {
+                    "id": 204890422,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "Join our DRINK & EARN Club",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:39:33.117Z",
+                    "updatedAt": "2023-04-11T19:39:33.117Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        86.0,
+                        302.0
+                    ],
+                    [
+                        218.0,
+                        315.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298885,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:39:41.713Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890424,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "to earn rewards while dining",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:40:14.251Z",
+                    "updatedAt": "2023-04-11T19:40:14.251Z"
+                },
+                {
+                    "id": 204890423,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:39:47.336Z",
+                    "updatedAt": "2023-04-11T19:39:47.336Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        86.0,
+                        314.0
+                    ],
+                    [
+                        210.0,
+                        324.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298897,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:40:23.561Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890425,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:40:28.448Z",
+                    "updatedAt": "2023-04-11T19:40:28.448Z"
+                },
+                {
+                    "id": 204890443,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "at any Resturante Unlimited ",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:41:25.176Z",
+                    "updatedAt": "2023-04-11T19:41:25.176Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        85.0,
+                        323.0
+                    ],
+                    [
+                        211.0,
+                        336.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298932,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:41:38.820Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890446,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:41:43.338Z",
+                    "updatedAt": "2023-04-11T19:41:43.338Z"
+                },
+                {
+                    "id": 204890454,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "restaurant ask your server",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:42:32.974Z",
+                    "updatedAt": "2023-04-11T19:42:32.974Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        87.0,
+                        334.0
+                    ],
+                    [
+                        210.0,
+                        346.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298416,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:28:30.517Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890320,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Other",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:28:37.062Z",
+                    "updatedAt": "2023-04-11T19:28:37.062Z"
+                },
+                {
+                    "id": 204890321,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "for details or join online at:",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:29:13.651Z",
+                    "updatedAt": "2023-04-11T19:29:13.651Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        87.0,
+                        344.0
+                    ],
+                    [
+                        216.0,
+                        356.0
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1276298366,
+            "classId": 11379804,
+            "description": "",
+            "geometryType": "rectangle",
+            "labelerLogin": "MojtabaHITL",
+            "createdAt": "2023-04-11T19:27:11.965Z",
+            "updatedAt": "2023-04-11T19:43:06.587Z",
+            "tags": [
+                {
+                    "id": 204890307,
+                    "tagId": 30598862,
+                    "name": "Category",
+                    "value": "Business other information",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:27:22.699Z",
+                    "updatedAt": "2023-04-11T19:27:22.699Z"
+                },
+                {
+                    "id": 204890319,
+                    "tagId": 30598861,
+                    "name": "Transcription",
+                    "value": "www.r-u-1.com/roard4",
+                    "labelerLogin": "MojtabaHITL",
+                    "createdAt": "2023-04-11T19:28:10.738Z",
+                    "updatedAt": "2023-04-11T19:28:10.738Z"
+                }
+            ],
+            "classTitle": "Text",
+            "points": {
+                "exterior": [
+                    [
+                        109.0,
+                        364.0
+                    ],
+                    [
+                        201.0,
+                        375.0
+                    ]
+                ],
+                "interior": []
+            }
+        }
+    ],
+    "size": {
+        "height": 450,
+        "width": 338
+    }
+}
