@@ -111,7 +111,11 @@ def run_evaluation(db_url: str) -> EvalResult:
 
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
+    
     import os
+    
     result = run_evaluation(os.environ["DATABASE_URL"])
 
     print(f"\n{'─'*50}")
