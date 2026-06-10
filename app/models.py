@@ -1,7 +1,7 @@
 # SQLAlchemy models (ShelfLifeReference + NormalizationCache)
 # app/models.py
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, func, Date, Boolean, Numeric, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
