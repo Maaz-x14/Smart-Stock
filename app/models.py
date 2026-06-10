@@ -38,3 +38,25 @@ class User(Base):
     email = Column(String(120), unique=True, nullable=False)
     name = Column(String(100))
     created_at = Column(DateTime, server_default=func.now())
+
+
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+
+    id                 = Column(Integer,      primary_key=True)
+    user_id            = Column(Integer,      ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    canonical_name     = Column(String(100),  nullable=False)
+    quantity           = Column(Numeric(8,2), nullable=False)
+    unit               = Column(String(20))
+    category           = Column(String(50),   nullable=False)
+    storage_context    = Column(String(20),   nullable=False)
+    purchase_date      = Column(Date,         nullable=False)
+    predicted_expiry   = Column(Date,         nullable=False)
+    shelf_life_days    = Column(Integer,      nullable=False)
+    confidence         = Column(Numeric(5,4), nullable=False)
+    expiry_source      = Column(String(30),   nullable=False)  # exact_match | category_fallback | hard_default
+    flag_for_review    = Column(Boolean,      nullable=False,  default=False)
+    normalization_pass = Column(Integer,      nullable=False)  # 1, 2, or 3 from Stage 3
+    status             = Column(String(20),   nullable=False,  default="ACTIVE")  # ACTIVE | CONSUMED | WASTED
+    created_at         = Column(DateTime,     nullable=False,  server_default=func.now())
+    updated_at         = Column(DateTime,     nullable=False,  server_default=func.now(), onupdate=func.now())
