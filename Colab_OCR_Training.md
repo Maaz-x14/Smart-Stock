@@ -19,6 +19,24 @@
 
 ---
 
+## LoRA Parameter Calculation
+
+Full fine-tuning trains every weight matrix as-is. LoRA instead freezes the original matrix and adds two small matrices A and B alongside it, where A×B approximates the weight update.
+For each targeted weight matrix of size (d_in × d_out), LoRA adds:
+
+Matrix A: d_in × r
+Matrix B: r × d_out
+
+Instead of updating d_in × d_out params, you only train d_in×r + r×d_out params.
+Your config: r=16, targeting q_proj and v_proj in the decoder
+TrOCR decoder has 12 layers, each with self-attention + cross-attention = 2 attention blocks per layer.
+q_proj and v_proj are both (1024 × 1024) matrices in the decoder.
+Per matrix, LoRA params = 1024×16 + 16×1024 = 16384 + 16384 = 32,768
+Total = 32,768 × 2 (q+v) × 2 (self+cross attention) × 12 (layers)
+
+= 32,768 × 48 = 1,572,864 ≈ 1.52M ✅ matches your output exactly.
+Original would have been 1024×1024 × 4 × 12 = 50M just for those layers, plus the other 283M frozen.
+
 ## Cell 0 — Run First: Environment Setup
 
 Add this as the very first cell in your Colab notebook:
@@ -291,3 +309,5 @@ Colab's `/content/` is wiped on session disconnect. Google Drive is permanent.
 | GPU not available | Runtime → Change runtime type → T4 GPU |
 | Colab free tier session limit | ~12 hours max. Same as Kaggle. Resume from Drive checkpoints on next session. |
 | `fp16=True` fails on some Colab GPUs | If you get a CUDA error on fp16, add `fp16_backend="auto"` to training_args |
+
+
