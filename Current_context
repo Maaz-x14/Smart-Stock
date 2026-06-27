@@ -1,0 +1,177 @@
+# SmartStock TrOCR — Full Context Summary
+
+## Project Overview
+
+**Goal:** Build an OCR pipeline for receipt images as part of the SmartStock ML project.
+**Pipeline:** Receipt image → TrOCR OCR → NER → Normalization → Expiry Prediction
+**Model:** `microsoft/trocr-base-printed` fine-tuned with LoRA on CORD + SROIE datasets
+**Target metrics:** CER ≤ 5% (0.05), WER ≤ 10% (0.10)
+**Infrastructure:** Kaggle (30 hr/week GPU quota, 2× T4)
+
+---
+
+## Architecture Decisions (Fixed)
+
+- **Frozen encoder + LoRA on decoder only** (`q_proj`, `v_proj`, all 12 layers)
+- LoRA config: `r=16, lora_alpha=32, lora_dropout=0.05, bias="none"`
+- Trainable params: 1,523,712 (0.45% of 335M total)
+- **peft==0.13.2** (last version before torchao dependency conflict; install with `--no-deps` if needed)
+- **LoRASaveCallback** — custom TrainerCallback saves `lora_adapter/` subdir alongside each checkpoint (without it, PEFT silently resets weights on checkpoint reload)
+
+---
+
+## Dataset
+
+- Combined CORD + SROIE → line-crop pairs with PNG bytes
+- **31,057 train / 221 val / 8,301 test**
+- Pre-built as `smart_stock_dataset_v2`, stored in Kaggle input
+- **New dataset available:** WildReceipt (downloaded locally, not yet integrated)
+  - Structure: `wildreceipt/image_files/Image_1..91/0/*.jpg` + annotation files
+  - Has `class_list.txt`, `dict.txt`, `train.txt`, `test.txt`
+
+---
+
+## Training History
+
+| Run | Setup | Best Val CER | Notes |
+|-----|-------|-------------|-------|
+| Full finetune | All 333M params | 0.1758 | Plateau — optimizer mismatch |
+| LoRA first (Colab) | Frozen enc + LoRA dec | 0.0894 | 1 epoch only |
+| Optuna search | 1 epoch, 1/8 data, batch 4 | 0.0803–0.0886 | Best: lr=1.4824e-4, warmup=0.02672 |
+| Kaggle run 1 | 5 epochs, DataParallel batch 16 | 0.1325→0.1372 | DataParallel doubled batch |
+| **Kaggle run 2 (latest)** | 8 epochs, attempted single GPU | **0.1332** | DataParallel STILL fired |
+
+**Current best saved model:** `trocr-smart-stock-best` — CER ~0.0856 (from earlier Colab LoRA run). This is the benchmark to beat.
+
+---
+
+## Root Causes Identified
+
+### Bug 1 — CRITICAL: DataParallel not actually disabled
+`os.environ["CUDA_VISIBLE_DEVICES"] = "0"` was placed after PyTorch imports, so it had no effect. Kaggle 2×T4 silently ran DataParallel, doubling effective batch size from 8→16. Optuna tuned at batch 4, so LR is always mismatched.
+
+**Fix:** Move to the very top of the Setup & Paths cell, **before all imports**:
+```python
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # MUST be before everything
+from pathlib import Path
+# ... rest of setup
+```
+
+### Bug 2 — Test eval hangs on degenerate image crops
+Test set contains 1-pixel-wide images (`torch.Size([3, 42, 1])`). Beam search hangs on these. The 12-hour session was consumed by the stuck test evaluation (6+ hours on 8,301 samples, never completed).
+
+**Fix:** Skip degenerate crops (width or height < 4px) in test eval. Use a manual loop instead of `trainer.evaluate()` for the test set:
+```python
+for sample in combined_dataset["test"]:
+    image = Image.open(io.BytesIO(sample["image_bytes"])).convert("RGB")
+    w, h = image.size
+    if w < 4 or h < 4:
+        skipped += 1
+        continue
+    # ... generate and collect
+```
+
+### Bug 3 — PEFT checkpoint save bug (FIXED in current code)
+LoRASaveCallback already handles this correctly. No action needed.
+
+---
+
+## Kaggle Paths (Current)
+
+```python
+MODEL_INPUT    = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/content/drive/MyDrive/SmartStock/trocr-smart-stock-best")
+DATASET_DIR    = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/smart_stock_dataset_v2")
+CHECKPOINT_DIR = Path("/kaggle/working/trocr-smart-stock")
+BEST_MODEL_DIR = Path("/kaggle/working/trocr-smart-stock-best")
+INPUT_CHECKPOINT_DIR = Path("/kaggle/input/smart-stock-dataset/trocr-smart-stock")
+```
+
+---
+
+## Current Notebook Structure (Run Order)
+
+1. **Setup & Paths** ← ADD `os.environ["CUDA_VISIBLE_DEVICES"] = "0"` HERE (before all imports)
+2. CORD crop extractor (skip — output in input)
+3. SROIE crop extractor (skip — output in input)
+4. Dataset builder (skip — loads from disk)
+5. **Augmentation**
+6. **Preprocessing Function** (includes `TrOCRDataset`, `processor`)
+7. **collate_fn** (standalone cell — extracted from Optuna block)
+8. **Model Setup** (auto-detects LoRA checkpoints, falls back to fresh LoRA)
+9. **Training Arguments** (hardcoded best LR, cosine_with_restarts)
+10. **Metrics**
+11. Optuna (COMMENTED OUT — LR already hardcoded)
+12. **Trainer and Training** (with LoRASaveCallback)
+13. Training Curves
+14. **Save & Export**
+15. **Evaluate on Test Set** ← REPLACE with manual loop to skip bad images
+16. Qualitative Evaluation
+
+---
+
+## Training Arguments (Current Best Config)
+
+```python
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # ← must be at top of Setup cell
+
+training_args = Seq2SeqTrainingArguments(
+    output_dir=str(CHECKPOINT_DIR),
+    num_train_epochs=8,
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=8,
+    learning_rate=1.4824e-4,       # Optuna best
+    warmup_ratio=0.02672,
+    weight_decay=0.01,
+    lr_scheduler_type="cosine_with_restarts",
+    lr_scheduler_kwargs={"num_cycles": 2},
+    max_grad_norm=1.0,
+    eval_strategy="epoch",
+    save_strategy="steps",
+    save_steps=500,
+    load_best_model_at_end=False,
+    save_total_limit=5,
+    predict_with_generate=True,
+    generation_max_length=128,
+    fp16=True,
+    dataloader_num_workers=2,
+    logging_steps=50,
+    log_level="info",
+    report_to="none",
+)
+```
+
+---
+
+## What to Download from Latest Run
+
+- **Download `trocr-smart-stock-best/`** (the merged model, 6 files ~1.3 GB) — keep as backup
+- **Do NOT replace the existing `trocr-smart-stock-best` Kaggle dataset** — latest run (CER 0.1332) is worse than stored best (CER 0.0856)
+- The `trocr-smart-stock/checkpoint-*` directories can be discarded (bad training run)
+
+---
+
+## Immediate Next Steps (Priority Order)
+
+1. **Fix `CUDA_VISIBLE_DEVICES` placement** (move to top of Setup cell, before all imports) — this is the single most critical fix. Everything else is blocked on this.
+2. **Fix test eval** (manual loop with degenerate image filter)
+3. **Integrate WildReceipt dataset** — add to CORD+SROIE mix, likely significant improvement given more diverse receipt data
+4. **After stable baseline is achieved** (~epoch 1 should show CER ~0.088–0.090 once DataParallel is actually disabled): unfreeze top 2–4 encoder layers alongside LoRA — the frozen encoder is the current performance ceiling
+
+---
+
+## WildReceipt Integration Plan (for next session)
+
+WildReceipt format uses annotation text files (`train.txt`, `test.txt`) pointing to images. Need to:
+1. Parse annotation files to extract bounding boxes + text labels per image
+2. Crop line regions from each receipt image
+3. Save as `(image_bytes, text)` pairs in the same format as CORD/SROIE
+4. Concatenate into `combined_dataset["train"]` alongside existing data
+
+---
+
+## Files to Attach in New Chat
+
+1. **`kaggle_trocr.ipynb`** — current notebook (latest version)
+2. **WildReceipt dataset** (zip or folder) — for integration
+3. **`training_improvements.md`** (optional — the guide doc generated in this session)
