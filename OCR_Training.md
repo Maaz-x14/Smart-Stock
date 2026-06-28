@@ -1,31 +1,84 @@
-# Model_Training.md — Model Training Guide
-## Smart-Stock: TrOCR + DistilBERT Fine-Tuning
+# OCR_Training.md — Model Training Guide
+## SmartStock: TrOCR Fine-Tuning
 
-**Version:** 12.0 (Augmentation improved, strategies consolidated, TPU removed, doc cleaned)  
-**Training Environment:** Kaggle (T4/P100 GPU)  
-**Last Updated:** Based on live dataset audit + runtime error fixes
-
----
-
-
-## Part 1: TrOCR Fine-Tuning
-
-### 1.1 What TrOCR Learns Here
-
-TrOCR (`microsoft/trocr-base-printed`) is a Vision Encoder-Decoder model. The encoder (ViT) reads the receipt image; the decoder (RoBERTa) generates the transcribed text. Fine-tuning on CORD + SROIE teaches it the visual patterns of receipt typography: compressed thermal fonts, faded ink, price columns, item name abbreviations.
-
-**Input:** Single cropped text line from a receipt (PIL RGB) — NOT the full receipt image  
-**Output:** Text of that one line (e.g., `"Nasi Campur Bali 1 x 75,000"`)
-
-> **Why line crops?** TrOCR was pretrained on single-line text images. Feeding it full receipt images (20–50 lines) is a domain mismatch — the model has never seen multi-line inputs. Line crops align with its pretraining format and are the single biggest fix for CER.
+**Version:** 13.0  
+**Training Environment:** Kaggle (2× T4 GPU, 30 hr/week quota — single GPU enforced via `CUDA_VISIBLE_DEVICES`)  
+**Last Updated:** Current as of v3 dataset integration + WildReceipt addition
 
 ---
 
-### 1.2 Dataset Preparation
+## Pipeline Overview
 
-#### CORD Ground Truth Extraction
+```
+Receipt Image → TrOCR (OCR) → NER → Normalization → Expiry Prediction
+```
 
-CORD's `ground_truth` field is a raw JSON string. You must parse it and construct a flat text target from the `menu` array:
+This document covers **Stage 1: TrOCR fine-tuning only.**
+
+**Model:** `microsoft/trocr-base-printed` + LoRA (decoder only)  
+**Target metrics:** CER ≤ 0.05 (5%) | WER ≤ 0.10 (10%)  
+**Current best:** CER ~0.0856 (Colab LoRA run, stored as `trocr-smart-stock-best`)  
+**Baseline to beat:** 0.0856 — do not overwrite this Kaggle dataset until a better run is confirmed
+
+---
+
+## Part 1: Architecture
+
+### 1.1 Why LoRA, Why Frozen Encoder
+
+TrOCR is a Vision Encoder-Decoder: ViT encoder reads the image, RoBERTa decoder generates text. Full fine-tuning of 335M parameters caused plateau and optimizer instability. Current approach:
+
+- **Encoder (ViT): fully frozen** — preserves pretrained visual feature extraction
+- **Decoder: LoRA on `q_proj` + `v_proj`, all 12 layers** — adapts text generation with minimal parameters
+- **Trainable params: 1,523,712 (0.45% of 335M total)**
+
+LoRA config:
+```python
+LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.05,
+    target_modules=["q_proj", "v_proj"],
+    bias="none",
+)
+```
+
+**Known ceiling:** Frozen encoder is the current performance ceiling. Once a stable single-GPU baseline is re-established, unfreezing the top 2–4 ViT encoder blocks alongside LoRA is the highest-impact next step.
+
+### 1.2 Why Line Crops
+
+TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 lines) is a domain mismatch. Line crops are the single biggest architectural fix — CER dropped from 0.757 (full images) → 0.133 after switching.
+
+**Input:** Single cropped text line from a receipt (PIL RGB)  
+**Output:** Text of that one line (e.g., `"MULTIGRAIN CHEERIO 1.50"`)
+
+---
+
+## Part 2: Dataset — v3 (Current)
+
+### 2.1 Composition
+
+| Source | Train | Val | Test | Notes |
+|--------|-------|-----|------|-------|
+| CORD | ~2,105 | 221 | ~251 | Indonesian restaurant receipts |
+| SROIE | ~14,476 | — | ~8,050 | English retail receipts, 2× weighted in train |
+| WildReceipt | ~11,400 | ~1,267 | 1,000 | Diverse English receipts, test capped at 1,000 |
+| WildReceipt excess test | ~4,103 | — | — | Moved to train |
+| **Total v3** | **~46,500** | **~1,488** | **~9,301** | |
+
+**Dataset name on Kaggle:** `smart-stock-dataset-v3`  
+**Input path:** `/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/smart_stock_dataset_v3`
+
+### 2.2 Key Dataset Decisions
+
+- **SROIE 2× weighted** in train — more English receipt signal vs CORD's Indonesian menus
+- **Validation = CORD + WildReceipt val only** — SROIE has no val split; retraining from scratch so new baseline will be established on this mixed val set
+- **WildReceipt test capped at 1,000 crops** — prevents test eval from hanging (previous session lost 6+ hours to beam search on 8,301 SROIE test samples alone); excess ~4,103 crops folded into train
+- **WildReceipt labels excluded:** 0 (empty/illegible) and 25 (catch-all noise like terminal IDs, legal text). All other labels included.
+- **WildReceipt line grouping:** relative Y-tolerance (2% of image height, min 10px) — handles WildReceipt's large image sizes (1,000–1,800px) better than SROIE's fixed 15px
+
+### 2.3 CORD Extractor
 
 ```python
 import json
@@ -33,17 +86,6 @@ from collections import defaultdict
 from PIL import Image
 
 def extract_cord_crops(image: Image.Image, ground_truth_str: str) -> list:
-    """
-    Extract line-level crops from a CORD receipt image.
-
-    Bounding boxes are in valid_line[].words[].quad, NOT in gt_parse.menu.
-    Each group_id in valid_line = one logical receipt line.
-    We group words by group_id, merge their quads into one bbox, crop it,
-    and use the joined word texts as the OCR target.
-    Only menu.* categories are kept (skip total, tax, header lines).
-
-    Returns list of (cropped_PIL_image, text) pairs.
-    """
     try:
         data = json.loads(ground_truth_str)
     except (json.JSONDecodeError, AttributeError):
@@ -53,7 +95,6 @@ def extract_cord_crops(image: Image.Image, ground_truth_str: str) -> list:
     if not valid_lines:
         return []
 
-    # Group lines by group_id
     groups = defaultdict(list)
     for line in valid_lines:
         groups[line["group_id"]].append(line)
@@ -62,7 +103,6 @@ def extract_cord_crops(image: Image.Image, ground_truth_str: str) -> list:
     crops = []
 
     for gid, lines in groups.items():
-        # Only keep menu lines (skip total, sub_total, etc.)
         if not any(l.get("category", "").startswith("menu.") for l in lines):
             continue
 
@@ -91,27 +131,15 @@ def extract_cord_crops(image: Image.Image, ground_truth_str: str) -> list:
     return crops
 ```
 
-**Example:** group_id 3 → bbox=(176,552,664,586) → crop → text=`"1 REAL GANACHE 16,500"`  
-One CORD receipt → ~8–12 crops, each one logical receipt line.
-
-#### SROIE Line-Level Crops
-
-SROIE has `bboxes` per word. Group words by Y-coordinate (within 15px = same line), merge bounding boxes per line, crop each line region:
+### 2.4 SROIE Extractor
 
 ```python
 def extract_sroie_crops(image: Image.Image, words: list, bboxes: list) -> list:
-    """
-    Group SROIE words into lines by Y-coordinate proximity.
-    Each line bbox is cropped and paired with its joined text.
-    Returns list of (cropped_PIL_image, text) pairs.
-    """
     if not words or not bboxes:
         return []
 
-    # Sort by top-Y of each word bbox
     items = sorted(zip(words, bboxes), key=lambda x: x[1][1])
 
-    # Group into lines: words within 15px vertically = same line
     lines = []
     current_words, current_boxes = [items[0][0]], [items[0][1]]
     for word, box in items[1:]:
@@ -139,131 +167,140 @@ def extract_sroie_crops(image: Image.Image, words: list, bboxes: list) -> list:
     return crops
 ```
 
-#### Combined Dataset Builder
-
-> **OOM fix:** Images encoded to PNG bytes immediately — no PIL accumulation in RAM.  
-> **Line crops:** Each receipt yields multiple (crop, text) pairs instead of one (full_image, all_text).  
-> **SROIE 2x weighting:** SROIE train concatenated twice — gives more weight to English receipt text vs CORD's Indonesian menus.  
-> **New dataset path:** Since this is a rebuilt dataset, save to a new path to avoid loading the old full-image version.
+### 2.5 WildReceipt Extractor
 
 ```python
-import io
 import json
-from pathlib import Path
-from datasets import load_dataset, Dataset, DatasetDict
-from PIL import Image
+WILDRECEIPT_EXCLUDE = {0, 25}
 
-# New path — line-crop dataset is incompatible with old full-image dataset
-SAVE_PATH = Path("/kaggle/working/smart_stock_dataset_v2")
+def extract_wildreceipt_crops(annotation_file: Path) -> list:
+    crops = []
 
-def pil_to_bytes(img: Image.Image) -> bytes:
-    buf = io.BytesIO()
-    img.convert("RGB").save(buf, format="PNG")
-    return buf.getvalue()
+    with open(annotation_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
-def iter_to_dataset(iterator) -> Dataset:
-    """
-    Convert an iterator of (PIL Image, text) tuples into a Dataset.
-    Encodes each image to bytes immediately — never accumulates PIL objects in RAM.
-    """
-    img_bytes, texts = [], []
-    for img, text in iterator:
-        img_bytes.append(pil_to_bytes(img))
-        texts.append(text)
-    return Dataset.from_dict({"image_bytes": img_bytes, "text": texts})
+            img_path = WILDRECEIPT_DIR / record["file_name"]
+            if not img_path.exists():
+                continue
 
-def build_and_save_dataset():
-    """
-    Build line-crop CORD + SROIE dataset and save to disk.
-    On subsequent runs, loads directly from disk — no reprocessing.
-    """
-    if SAVE_PATH.exists():
-        print(f"Dataset found at {SAVE_PATH} — loading from disk...")
-        return DatasetDict.load_from_disk(str(SAVE_PATH))
+            try:
+                image = Image.open(img_path).convert("RGB")
+            except Exception:
+                continue
 
-    print("Building line-crop dataset from scratch...")
+            img_w, img_h = image.size
+            y_tolerance = max(10, int(img_h * 0.02))  # 2% of height, min 10px
 
-    # --- CORD — line crops via bounding boxes ---
-    print("Loading CORD...")
-    cord = load_dataset("naver-clova-ix/cord-v2")
+            valid_annotations = [
+                ann for ann in record["annotations"]
+                if ann["label"] not in WILDRECEIPT_EXCLUDE
+                and ann.get("text", "").strip()
+            ]
+            if not valid_annotations:
+                continue
 
-    def cord_iter(split):
-        for ex in cord[split]:
-            for crop, text in extract_cord_crops(ex["image"], ex["ground_truth"]):
-                yield crop, text
+            def ann_coords(ann):
+                box = ann["box"]
+                xs = [box[0], box[2], box[4], box[6]]
+                ys = [box[1], box[3], box[5], box[7]]
+                center_y = (min(ys) + max(ys)) / 2
+                return center_y, min(xs), min(ys), max(xs), max(ys)
 
-    cord_train      = iter_to_dataset(cord_iter("train"))
-    cord_validation = iter_to_dataset(cord_iter("validation"))
-    cord_test       = iter_to_dataset(cord_iter("test"))
-    print(f"  CORD train: {len(cord_train)} | val: {len(cord_validation)} | test: {len(cord_test)}")
-    del cord
+            parsed = []
+            for ann in valid_annotations:
+                cy, x1, y1, x2, y2 = ann_coords(ann)
+                parsed.append((cy, x1, y1, x2, y2, ann["text"].strip()))
+            parsed.sort(key=lambda r: (r[0], r[1]))
 
-    # --- SROIE — line crops via word bbox grouping ---
-    print("Loading SROIE...")
-    sroie = load_dataset("sizhkhy/SROIE")
+            lines = []
+            current_line = [parsed[0]]
+            for item in parsed[1:]:
+                if abs(item[0] - current_line[-1][0]) <= y_tolerance:
+                    current_line.append(item)
+                else:
+                    lines.append(current_line)
+                    current_line = [item]
+            lines.append(current_line)
 
-    def sroie_iter(split):
-        for ex in sroie[split]:
-            for crop, text in extract_sroie_crops(ex["images"], ex["words"], ex["bboxes"]):
-                yield crop, text
+            for line_items in lines:
+                text = " ".join(item[5] for item in line_items)
+                if not text:
+                    continue
+                x1 = max(0, min(item[1] for item in line_items))
+                y1 = max(0, min(item[2] for item in line_items))
+                x2 = min(img_w, max(item[3] for item in line_items))
+                y2 = min(img_h, max(item[4] for item in line_items))
+                if x2 <= x1 or y2 <= y1:
+                    continue
+                if (x2 - x1) < 4 or (y2 - y1) < 4:
+                    continue
+                crops.append((image.crop((x1, y1, x2, y2)), text))
 
-    sroie_train = iter_to_dataset(sroie_iter("train"))
-    sroie_test  = iter_to_dataset(sroie_iter("test"))
-    print(f"  SROIE train: {len(sroie_train)} | test: {len(sroie_test)}")
-    del sroie
-
-    # --- Combine ---
-    # SROIE train duplicated for 2x weight (more English receipt signal)
-    # validation = CORD only (SROIE has no val split)
-    from datasets import concatenate_datasets
-    dataset_dict = DatasetDict({
-        "train":      concatenate_datasets([cord_train, sroie_train, sroie_train]),
-        "validation": cord_validation,
-        "test":       concatenate_datasets([cord_test, sroie_test]),
-    })
-
-    SAVE_PATH.mkdir(parents=True, exist_ok=True)
-    dataset_dict.save_to_disk(str(SAVE_PATH))
-
-    print(f"\n✅ Saved to {SAVE_PATH}")
-    print(f"   Train:      {len(dataset_dict['train'])}")
-    print(f"   Validation: {len(dataset_dict['validation'])}")
-    print(f"   Test:       {len(dataset_dict['test'])}")
-    return dataset_dict
-
-combined_dataset = build_and_save_dataset()
+    return crops
 ```
 
-Expected sizes (line crops):
-- Train: ~24,000+ examples (CORD ~6k + SROIE ~9k × 2)
-- Validation: ~800 examples (CORD val crops)
-- Test: ~6,000 examples (CORD + SROIE test crops)
+### 2.6 Dataset Builder (v3)
+
+```python
+WR_TEST_KEEP = 1000  # cap WildReceipt test crops, remainder moves to train
+
+def build_and_save_dataset():
+    if DATASET_SAVE.exists():
+        print(f"Dataset found at {DATASET_SAVE} — loading from disk...")
+        return DatasetDict.load_from_disk(str(DATASET_SAVE))
+
+    # ... load CORD, SROIE, WildReceipt (see notebook Cell 4 + WildReceipt extractor cell) ...
+
+    # WildReceipt: 90/10 train/val split from train.txt crops
+    wr_train_split = wr_train_raw.train_test_split(test_size=0.1, seed=42)
+    wr_train_final = wr_train_split["train"]
+    wr_val         = wr_train_split["test"]
+
+    # Cap test.txt crops at 1000, move remainder to train
+    wr_test_split    = wr_test_raw.train_test_split(test_size=WR_TEST_KEEP, seed=42)
+    wr_test_final    = wr_test_split["test"]
+    wr_test_to_train = wr_test_split["train"]
+
+    train_parts = [cord_train, sroie_train, sroie_train, wr_train_final, wr_test_to_train]
+
+    dataset_dict = DatasetDict({
+        "train":      concatenate_datasets(train_parts),
+        "validation": concatenate_datasets([cord_validation, wr_val]),
+        "test":       concatenate_datasets([cord_test, sroie_test, wr_test_final]),
+    })
+
+    dataset_dict.save_to_disk(str(WORKING_DIR / "smart_stock_dataset_v3"))
+```
 
 ---
 
-### 1.3 Augmentation
+## Part 3: Augmentation
 
-Apply augmentation **only to training images**, inline during the `preprocess_trocr` step. The augmentation simulates real-world receipt degradation.
+Applied **only to training images**, inline during `preprocess_trocr`. Simulates real-world receipt degradation.
 
 ```python
 import albumentations as A
 import cv2
-import numpy as np
-from PIL import Image, ImageOps
 
 receipt_augmentation = A.Compose([
-    A.RandomBrightnessContrast(brightness_limit=(-0.4, 0.15), p=0.6), # Stronger thermal fade
-    A.GaussNoise(p=0.5),                                               # Scanner noise
-    A.Rotate(limit=8, border_mode=cv2.BORDER_REPLICATE, p=0.5),        # Crumple tilt
-    A.Perspective(scale=(0.02, 0.08), p=0.4),                          # Photo angle
-    A.MotionBlur(blur_limit=5, p=0.3),                                 # Shaky photo
-    A.ImageCompression(p=0.5),                                         # JPEG artifact
-    A.GaussianBlur(blur_limit=(3, 5), p=0.3),                          # Focus blur
-    A.RandomShadow(p=0.2),                                             # Shadows on receipt
+    A.RandomBrightnessContrast(brightness_limit=(-0.4, 0.15), p=0.6),  # thermal fade
+    A.GaussNoise(p=0.5),                                                 # scanner noise
+    A.Rotate(limit=8, border_mode=cv2.BORDER_REPLICATE, p=0.5),         # crumple tilt
+    A.Perspective(scale=(0.02, 0.08), p=0.4),                           # photo angle
+    A.MotionBlur(blur_limit=5, p=0.3),                                  # shaky photo
+    A.ImageCompression(p=0.5),                                           # JPEG artifact
+    A.GaussianBlur(blur_limit=(3, 5), p=0.3),                           # focus blur
+    A.RandomShadow(p=0.2),                                               # shadows
 ])
 
 def apply_augmentation(pil_image: Image.Image) -> Image.Image:
-    """Pad tiny line crops to min 32px height, then augment."""
     pil_image = pil_image.convert("RGB")
     if pil_image.height < 32:
         pad = 32 - pil_image.height
@@ -275,92 +312,62 @@ def apply_augmentation(pil_image: Image.Image) -> Image.Image:
 
 ---
 
-### 1.4 Preprocessing Function
-
+## Part 4: Preprocessing & Dataset Class
 
 ```python
-import io
-import torch
-from torch.utils.data import Dataset as TorchDataset
-from transformers import TrOCRProcessor
-
 processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-printed")
 
 def preprocess_trocr(example, augment: bool = False):
-    """
-    Preprocess a single (image_bytes, text) example.
-    Called per-item at access time — no upfront caching.
-
-    Returns dict with 'pixel_values' (tensor) and 'labels' (tensor).
-    """
     image = Image.open(io.BytesIO(example["image_bytes"])).convert("RGB")
-
     if augment:
         image = apply_augmentation(image)
-
     pixel_values = processor(images=image, return_tensors="pt").pixel_values
-
     labels = processor.tokenizer(
-        example["text"],
-        padding="max_length",
-        max_length=128,
-        truncation=True,
+        example["text"], padding="max_length", max_length=128, truncation=True,
     ).input_ids
-
-    labels = [
-        t if t != processor.tokenizer.pad_token_id else -100
-        for t in labels
-    ]
-
+    labels = [t if t != processor.tokenizer.pad_token_id else -100 for t in labels]
     return {
         "pixel_values": pixel_values.squeeze(),
         "labels": torch.tensor(labels, dtype=torch.long),
     }
 
-
 class TrOCRDataset(TorchDataset):
-    """
-    On-the-fly preprocessing — processes each example at access time.
-    Replaces .map() which caused either:
-      - OOM (keep_in_memory=True on 31k examples)
-      - OSError Errno 28 (cache_file_name on full disk)
-    Zero disk usage, zero RAM accumulation, full dataset used.
-    Compatible with Seq2SeqTrainer — accepts any PyTorch Dataset.
-    """
+    # On-the-fly preprocessing — zero RAM accumulation, compatible with Seq2SeqTrainer
     def __init__(self, hf_dataset, augment: bool = False):
-        self.data    = hf_dataset
+        self.data = hf_dataset
         self.augment = augment
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        return preprocess_trocr(self.data[idx], augment=self.augment)
-
-
-train_dataset = TrOCRDataset(combined_dataset["train"],      augment=True)
-val_dataset   = TrOCRDataset(combined_dataset["validation"], augment=False)
-test_dataset  = TrOCRDataset(combined_dataset["test"],       augment=False)
-
-print(f"Train: {len(train_dataset)} | Val: {len(val_dataset)} | Test: {len(test_dataset)}")
+    def __len__(self): return len(self.data)
+    def __getitem__(self, idx): return preprocess_trocr(self.data[idx], augment=self.augment)
 ```
 
 ---
 
-### 1.5 Model Setup (Corrected)
+## Part 5: Model Setup
 
 ```python
-from transformers import VisionEncoderDecoderModel, GenerationConfig
+base_model = VisionEncoderDecoderModel.from_pretrained(str(MODEL_INPUT))
 
-model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
+# Freeze encoder entirely
+for param in base_model.encoder.parameters():
+    param.requires_grad = False
 
-# Required decoder config
+# Apply LoRA to decoder (or resume from checkpoint — see priority logic below)
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    r=16, lora_alpha=32, lora_dropout=0.05,
+    target_modules=["q_proj", "v_proj"],
+    bias="none",
+)
+model = get_peft_model(base_model, lora_config)
+
+# Checkpoint resume priority:
+# 1. /kaggle/working/trocr-smart-stock (current session)
+# 2. /kaggle/input/.../trocr-smart-stock (uploaded from prior session)
+# 3. Fresh LoRA (no prior checkpoint)
+
 model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
 model.config.pad_token_id           = processor.tokenizer.pad_token_id
 model.config.vocab_size             = model.config.decoder.vocab_size
-
-# Generation config — must go on model.generation_config, not model.config
-# max_new_tokens omitted here — set via generation_max_length in training_args
 model.generation_config.eos_token_id         = processor.tokenizer.sep_token_id
 model.generation_config.early_stopping       = True
 model.generation_config.no_repeat_ngram_size = 3
@@ -368,365 +375,260 @@ model.generation_config.length_penalty       = 2.0
 model.generation_config.num_beams            = 4
 ```
 
+**LoRASaveCallback** — critical, must not be removed:
+```python
+class LoRASaveCallback(TrainerCallback):
+    def on_save(self, args, state, control, **kwargs):
+        checkpoint_dir = Path(args.output_dir) / f"checkpoint-{state.global_step}"
+        adapter_dir = checkpoint_dir / "lora_adapter"
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+        kwargs["model"].save_pretrained(str(adapter_dir))
+        return control
+```
+Without this, PEFT silently resets adapter weights on checkpoint reload.
+
 ---
 
-### 1.6 Training Arguments
+## Part 6: Training Arguments (Current Active Config)
 
 ```python
-from transformers import Seq2SeqTrainingArguments
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0" is set in Cell 1 (Setup & Paths)
+# — must be the very first line before any torch import anywhere in the notebook
 
 training_args = Seq2SeqTrainingArguments(
-    output_dir="./trocr-smart-stock",
-    
-    # Training schedule
-    num_train_epochs=10,              # reduced back to 10 -- larger dataset means more steps per epoch — more time to converge
-    per_device_train_batch_size=8,    # Safe for Kaggle T4 (16GB VRAM)
+    output_dir=str(CHECKPOINT_DIR),
+
+    num_train_epochs=8,
+    per_device_train_batch_size=8,   # effective batch = 8 (single GPU, no DataParallel)
     per_device_eval_batch_size=8,
-    
-    # Optimizer
-    learning_rate=2e-5,               # reduced from 5e-5 — more stable fine-tuning
-    warmup_ratio=0.06,                # replaces warmup_steps=500 (was 56% of training — way too long)
+
+    learning_rate=1.4824e-4,         # Optuna best (Trial 0, subset run)
+    warmup_ratio=0.02672,
     weight_decay=0.01,
-    lr_scheduler_type="cosine",
-    max_grad_norm=1.0,                # clips exploding gradients — fixes high grad_norm seen in run 1
-    
-    # Eval & saving
-    eval_strategy="epoch",            # renamed from evaluation_strategy in transformers 4.46+
-    save_strategy="epoch",
-    load_best_model_at_end=True,
-    metric_for_best_model="cer",
-    greater_is_better=False,          # Lower CER = better
-    save_total_limit=5,               # keep 5 checkpoints — prevents losing progress if session times out
-    
-    # Generation — only set max_new_tokens, not max_length (conflict warning)
+    lr_scheduler_type="cosine_with_restarts",
+    lr_scheduler_kwargs={"num_cycles": 2},
+    max_grad_norm=1.0,
+
+    eval_strategy="epoch",
+    save_strategy="steps",
+    save_steps=500,
+    load_best_model_at_end=False,
+    save_total_limit=5,
+
     predict_with_generate=True,
     generation_max_length=128,
-    
-    # Performance
-    fp16=True,                        # Mixed precision — required on T4
+
+    fp16=True,
     dataloader_num_workers=2,
-    
-    # Logging — log every epoch so CER/WER appear in the table
-    logging_dir="./logs",
     logging_steps=50,
     log_level="info",
-    report_to="none",                 # Disable wandb on Kaggle
+    report_to="none",
+
+    # gradient_accumulation_steps=2,  # commented — use only if batch 8 causes OOM
 )
 ```
 
----
-
-### 1.7 Metrics
-
-```python
-import numpy as np
-from jiwer import cer, wer
-
-def compute_metrics(pred):
-    pred_ids   = pred.predictions
-    labels_ids = pred.label_ids
-
-    # pred_ids may be float logits — argmax to get token ids
-    if pred_ids.dtype != np.int64 and pred_ids.ndim == 3:
-        pred_ids = np.argmax(pred_ids, axis=-1)
-
-    # Clip to valid vocab range to prevent OverflowError during decode
-    vocab_size = processor.tokenizer.vocab_size
-    pred_ids   = np.clip(pred_ids, 0, vocab_size - 1)
-
-    # Decode predictions
-    pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)
-
-    # Replace -100 (padding mask) with pad token id before decoding
-    labels_ids[labels_ids == -100] = processor.tokenizer.pad_token_id
-    label_str = processor.batch_decode(labels_ids, skip_special_tokens=True)
-
-    return {
-        "cer": round(cer(label_str, pred_str), 4),
-        "wer": round(wer(label_str, pred_str), 4),
-    }
-```
+**Note:** There is also an older commented-out block (`lr=1.695e-4`, `cosine`) above this one in the notebook — leave it commented, it is not used.
 
 ---
 
-### 1.8 Trainer and Training
+## Part 7: Kaggle Paths (Current)
 
 ```python
-import torch
-from transformers import Seq2SeqTrainer
+# Cell 1 — Setup & Paths
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # MUST be first line, before all imports
 
-def collate_fn(batch):
-    """
-    Custom collator for TrOCR.
-    pixel_values and labels are tensors returned directly by TrOCRDataset.__getitem__.
-    torch.stack combines them into batches.
-    """
-    pixel_values = torch.stack([item["pixel_values"] for item in batch])
-    labels       = torch.stack([item["labels"]       for item in batch])
-    return {"pixel_values": pixel_values, "labels": labels}
+INPUT_DIR   = Path("/kaggle/input")
+WORKING_DIR = Path("/kaggle/working")
 
-trainer = Seq2SeqTrainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=val_dataset,
-    data_collator=collate_fn,
-    compute_metrics=compute_metrics,
-)
+DATASET_DIR     = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/smart_stock_dataset_v3")
+WILDRECEIPT_DIR = Path("/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt")
+MODEL_INPUT     = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/content/drive/MyDrive/SmartStock/trocr-smart-stock-best")
+INPUT_CHECKPOINT_DIR = Path("/kaggle/input/smart-stock-dataset/trocr-smart-stock")
 
-# Resume from checkpoint — checks Kaggle input dataset first, then local working dir
-# Checkpoints saved inside smart-stock-dataset (same dataset as the line-crop dataset)
-CHECKPOINT_INPUT = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset/trocr-smart-stock")
-checkpoint_dir   = CHECKPOINT_INPUT if CHECKPOINT_INPUT.exists() else Path("./trocr-smart-stock")
-
-checkpoints = sorted(checkpoint_dir.glob("checkpoint-*")) if checkpoint_dir.exists() else []
-resume_from = str(checkpoints[-1]) if checkpoints else None
-
-if resume_from:
-    print(f"Resuming from: {resume_from}")
-else:
-    print("No checkpoint found — training from scratch")
-
-trainer.train(resume_from_checkpoint=resume_from)
+CHECKPOINT_DIR = WORKING_DIR / "trocr-smart-stock"
+BEST_MODEL_DIR = WORKING_DIR / "trocr-smart-stock-best"
 ```
 
----
-
-### 1.9 Save & Export
-
-```python
-from pathlib import Path
-
-save_path = "/kaggle/working/trocr-smart-stock-best"
-
-# Save model weights + config
-trainer.save_model(save_path)
-
-# Save processor (tokenizer + image processor)
-processor.save_pretrained(save_path)
-
-# Save generation config (beam search params)
-model.generation_config.save_pretrained(save_path)
-
-# Verify all expected files are present
-expected_files = [
-    "model.safetensors",
-    "config.json",
-    "generation_config.json",
-    "tokenizer_config.json",
-    "tokenizer.json",
-    "vocab.json",
-    "merges.txt",
-    "processor_config.json",
-]
-print(f"\nSaved to: {save_path}")
-for fname in expected_files:
-    fpath = Path(save_path) / fname
-    exists = fpath.exists()
-    size = fpath.stat().st_size / 1e6 if exists else 0
-    print(f"  {'✅' if exists else '❌'} {fname} ({size:.1f} MB)")
-
-# Verify dataset also present
-for folder in ["smart_stock_dataset_v2", "trocr-smart-stock-best"]:
-    path = Path(f"/kaggle/working/{folder}")
-    if path.exists():
-        size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
-        print(f"✅ {folder}/: {size:.1f} MB total")
-    else:
-        print(f"❌ {folder}/: NOT FOUND")
-```
-
-#### ⚠️ How to permanently save outputs on Kaggle
-
-**Quick Save = code only. Save & Run All = outputs committed.** Everything in `/kaggle/working/` gets committed as output after Save & Run All completes.
-
-**Yes, save models as Kaggle datasets** — checkpoints, best models, preprocessed datasets. Anything you want to reuse goes into a Kaggle dataset. It's just a file store.
-
-**What to save and dataset names to use:**
-
-| Output folder | Kaggle dataset name |
+**Kaggle dataset inputs for current session:**
+| Dataset slug | Contains |
 |---|---|
-| `smart_stock_dataset_v2/` | `smart-stock-dataset-v2` |
-| `trocr-smart-stock/` (checkpoints) | `smart-stock-dataset` (update existing version — both dataset and checkpoints saved together) |
-| `trocr-smart-stock-best/` (final model) | `trocr-smart-stock-best` |
+| `smart-stock-dataset-v3` | Combined CORD + SROIE + WildReceipt v3 dataset (build once, reuse) |
+| `wild-receipt` | Raw WildReceipt images + annotation files (needed only during dataset build) |
+| `trocr-smart-stock-best` | Best model weights (CER 0.0856) — loaded as base for fine-tuning |
 
-**Correct workflow:**
-1. Make sure the save cell above is the last cell in your notebook
-2. Click **"Save Version"** → **"Save & Run All"**
-3. After completion, go to your notebook page on kaggle.com → **Output** section
-4. Click three dots next to each folder → **"Create Dataset"**
-5. Attach in future sessions via **Add Input** → search dataset name
+---
 
-**Loading in future sessions:**
+## Part 8: Notebook Cell Run Order
+
+| Cell | Name | Run? |
+|------|------|------|
+| 1 | Setup & Paths | ✅ Always |
+| 2 | CORD crop extractor | ✅ (defines function, fast) |
+| 3 | SROIE crop extractor | ✅ (defines function, fast) |
+| 4 | WildReceipt extractor | ✅ (defines function, fast) |
+| 5 | Dataset Builder | ✅ (loads from disk if v3 exists, else builds ~30 min) |
+| 6 | Augmentation | ✅ |
+| 7 | Preprocessing + TrOCRDataset | ✅ |
+| 8 | collate_fn | ✅ |
+| 9 | Model Setup | ✅ |
+| 10 | Training Arguments (Technique 1 block) | ✅ |
+| 11 | Metrics | ✅ |
+| 12 | Optuna | ⛔ Keep commented — run after epoch 1 baseline confirmed |
+| 13 | Trainer and Training | ✅ |
+| 14 | Training Curves | ✅ |
+| 15 | Save & Export | ✅ |
+| 16 | Evaluate on Test Set | ✅ (manual loop — not trainer.evaluate) |
+| 17 | Qualitative Evaluation | ✅ |
+
+---
+
+## Part 9: Save & Export
+
 ```python
-# Line-crop dataset (built once, reuse forever)
-# Kaggle input path format: /kaggle/input/datasets/{username}/{dataset-name}/{folder}
-SAVE_PATH = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v2/smart_stock_dataset_v2")
-if not SAVE_PATH.exists():
-    SAVE_PATH = Path("/kaggle/working/smart_stock_dataset_v2")  # fallback if rebuilding
+from peft import PeftModel
 
-# Resume training from saved checkpoint
-resume_from = "/kaggle/input/datasets/maazahmad69/smart-stock-dataset/trocr-smart-stock/checkpoint-15536"
+merged_model = model.merge_and_unload()
 
-# Load final trained model (after training completes)
-model = VisionEncoderDecoderModel.from_pretrained(
-    "/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/trocr-smart-stock-best"
-)
-processor = TrOCRProcessor.from_pretrained(
-    "/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/trocr-smart-stock-best"
-)
+merged_model.save_pretrained(str(BEST_MODEL_DIR))
+processor.save_pretrained(str(BEST_MODEL_DIR))
+merged_model.generation_config.save_pretrained(str(BEST_MODEL_DIR))
 ```
 
-> **Path format reminder:** Kaggle input paths follow `/kaggle/input/datasets/{username}/{dataset-slug}/{folder-name}`. Always verify by printing `os.listdir("/kaggle/input/datasets/maazahmad69/")` after attaching.
+Expected files in `trocr-smart-stock-best/`:
+`model.safetensors` (~1.3 GB), `config.json`, `generation_config.json`, `tokenizer_config.json`, `tokenizer.json`, `processor_config.json`
+
+**Rule:** Only overwrite the `trocr-smart-stock-best` Kaggle dataset if the new run beats CER 0.0856. Otherwise keep it as-is.
 
 ---
 
-### 1.10 Evaluate on Test Set
+## Part 10: Test Set Evaluation
 
 ```python
-results = trainer.evaluate(test_dataset)
-print(f"Test CER: {results['eval_cer']:.4f}")
-print(f"Test WER: {results['eval_wer']:.4f}")
+# Manual loop — DO NOT use trainer.evaluate(test_dataset)
+# trainer.evaluate() hangs on degenerate 1-pixel-wide crops in the test set
 
-# Target benchmarks:
-# CER ≤ 0.05 (5%)
-# WER ≤ 0.10 (10%)
-```
+model.eval()
+all_preds, all_labels = [], []
+skipped = 0
 
----
+for sample in combined_dataset["test"]:
+    try:
+        image = Image.open(io.BytesIO(sample["image_bytes"])).convert("RGB")
+        w, h = image.size
+        if w < 4 or h < 4:
+            skipped += 1
+            continue
+        pixel_values = processor(images=image, return_tensors="pt").pixel_values.to(model.device)
+        with torch.no_grad():
+            generated_ids = model.generate(pixel_values)
+        pred = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        all_preds.append(pred)
+        all_labels.append(sample["text"])
+    except Exception:
+        skipped += 1
 
-### 1.11 Kaggle Runtime Estimate
-
-| Phase | Duration (T4 GPU) |
-|---|---|
-| Dataset building (line crops) | ~20-30 min |
-| Augmentation + preprocessing | ~30-45 min |
-| Training (10 epochs, ~31,000 examples) | ~11–12 hours |
-| Evaluation on test set | ~10 min |
-| **Total** | **~12 hours** |
-
-Kaggle sessions cap at 12 hours. Observed: ~10:47 for 10 epochs on T4 with dual GPU. Fits within limit — use Save & Run All.
-
-**Run 1 result:** Session timed out at step 17,478/19,420 (90% complete). Resumed from checkpoint-15536 in draft session.
-
-**Run 2 results (resumed from checkpoint-17478, full 10 epochs complete):**
-
-| Epoch | Val Loss | CER | WER |
-|---|---|---|---|
-| 1 | 1.1757 | 0.2688 | 0.4169 |
-| 6 | 0.5300 | 0.1461 | 0.2712 |
-| 8 | 0.4867 | **0.1330** | **0.2476** |
-| 10 | 0.4760 | 0.1347 | 0.2476 |
-
-**Best checkpoint:** epoch 8 (CER: 0.133, checkpoint-15536). CER dropped from 0.757 (full images) → 0.133. Line crops confirmed as critical fix.
-
-**Test set:** CER: 1.692 | WER: 1.795 ⚠️ Large distribution gap — val 0.133 vs test 1.692. CORD/SROIE test receipts differ from training distribution. Next step: run Optuna to find best hyperparams, then evaluate if gap closes.
-
----
-
-
-## Part 1b: Hyperparameter Search with Optuna
-
-Use Optuna (Bayesian optimization) via HuggingFace built-in `hyperparameter_search` to find optimal values for the next training run.
-
-> **Time estimate on T4:** Each trial trains on 20% data (~6,200 examples) for 10 epochs ≈ ~25 min per trial. 10 trials ≈ ~4 hours. Fits within Kaggle's 12-hour session limit.
->
-> **Important:** `predict_with_generate=False` during Optuna search — generation is slow and we only need loss to rank trials. Re-enable for final training.
-
-```python
-# !pip install optuna -q
-
-def optuna_hp_space(trial):
-    return {
-        "learning_rate":               trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True),
-        "warmup_ratio":                trial.suggest_float("warmup_ratio", 0.03, 0.15),
-        "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [4, 8]),
-    }
-
-def model_init():
-    m = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
-    m.config.decoder_start_token_id = processor.tokenizer.cls_token_id
-    m.config.pad_token_id           = processor.tokenizer.pad_token_id
-    m.config.vocab_size             = m.config.decoder.vocab_size
-    m.generation_config.eos_token_id         = processor.tokenizer.sep_token_id
-    m.generation_config.early_stopping       = True
-    m.generation_config.no_repeat_ngram_size = 3
-    m.generation_config.length_penalty       = 2.0
-    m.generation_config.num_beams            = 4
-    return m
-
-# Use HF dataset (combined_dataset) not TorchDataset for .select()
-# TrOCRDataset is a PyTorch Dataset — it has no .select() method
-# Search args — disable predict_with_generate for speed (eval loss only, no generation)
-import copy
-search_args = copy.deepcopy(training_args)
-search_args.predict_with_generate = False
-search_args.num_train_epochs = 10  # full epochs on subset
-
-# Use HF dataset .select() then wrap in TrOCRDataset
-# TrOCRDataset has no .select() — must use combined_dataset (HF dataset) directly
-search_hf    = combined_dataset["train"].select(range(len(combined_dataset["train"]) // 5))
-search_train = TrOCRDataset(search_hf, augment=True)
-
-search_trainer = Seq2SeqTrainer(
-    model_init=model_init,
-    args=search_args,
-    train_dataset=search_train,
-    eval_dataset=val_dataset,
-    data_collator=collate_fn,
-    compute_metrics=compute_metrics,
-)
-
-best_run = search_trainer.hyperparameter_search(
-    direction="minimize",
-    backend="optuna",
-    hp_space=optuna_hp_space,
-    n_trials=10,
-)
-
-print("Best hyperparameters:", best_run.hyperparameters)
-# Apply to training_args for final full training run
-for k, v in best_run.hyperparameters.items():
-    setattr(training_args, k, v)
-# Re-enable generation for final training
-training_args.predict_with_generate = True
+test_cer = cer(all_labels, all_preds)
+test_wer = wer(all_labels, all_preds)
+print(f"Test CER : {test_cer:.4f}")
+print(f"Test WER : {test_wer:.4f}")
+print(f"Skipped  : {skipped} / {len(combined_dataset['test'])}")
 ```
 
 ---
 
-## Part 2: DistilBERT NER Fine-Tuning
+## Part 11: Training History
 
-> **Approach: Option A — Remap CORD Annotations**  
-> CORD's structured `ground_truth` JSON contains `nm` (item name), `cnt` (count/quantity), and `price` fields per menu item. These map directly to the food NER schema: `FOOD_ITEM`, `QUANTITY`, `PRICE`. No manual annotation required.  
->  
-> SROIE's NER tags (COMPANY, ADDRESS, DATE, TOTAL) have **zero overlap** with food entities — SROIE is not used for NER training.
+| Run | Setup | Best Val CER | Notes |
+|-----|-------|-------------|-------|
+| Full finetune | All 333M params | 0.1758 | Plateau, optimizer mismatch |
+| LoRA first (Colab) | Frozen enc + LoRA dec | 0.0894 | 1 epoch only |
+| Optuna search | 1 epoch, 1/8 data, batch 4 | 0.0803–0.0886 | Best: lr=1.4824e-4, warmup=0.02672 |
+| Kaggle run 1 | 5 epochs, DataParallel batch 16 | 0.1325→0.1372 | DataParallel doubled batch silently |
+| Kaggle run 2 | 8 epochs, attempted single GPU | 0.1332 | DataParallel STILL fired — env var placed after torch imports |
+| **v3 run (next)** | Single GPU confirmed, v3 dataset | TBD | GPU bug fixed, WildReceipt added |
 
-Full NER fine-tuning (data remapping, BIO tagging, training, evaluation) will be documented in **Part 2** once TrOCR training is complete and validated.
+**Current stored best:** `trocr-smart-stock-best` — CER ~0.0856 (Colab LoRA run). This is the benchmark.
 
 ---
 
-## Appendix: Troubleshooting
+## Part 12: Bugs Fixed
+
+### Bug 1 — CRITICAL: DataParallel not disabled (FIXED)
+`os.environ["CUDA_VISIBLE_DEVICES"] = "0"` was placed after PyTorch was already imported, so Kaggle's 2×T4 silently ran DataParallel, doubling effective batch from 8→16. Optuna tuned at batch 4, so LR was always mismatched.
+
+**Fix:** `os.environ["CUDA_VISIBLE_DEVICES"] = "0"` is now the **very first line of Cell 1**, before any import including `from pathlib import Path`.
+
+### Bug 2 — Test eval hangs on degenerate crops (FIXED)
+Test set contains 1-pixel-wide images (`torch.Size([3, 42, 1])`). Beam search hangs on these — previous session spent 6+ hours on test eval and never completed.
+
+**Fix:** Manual loop in Cell 16 skips any crop with `w < 4 or h < 4`.
+
+### Bug 3 — PEFT checkpoint save (FIXED)
+Without `LoRASaveCallback`, PEFT silently resets adapter weights on checkpoint reload. Callback saves `lora_adapter/` subdir alongside each checkpoint.
+
+---
+
+## Part 13: Improvement Techniques — Roadmap
+
+### Tier 1 — High impact, do next
+| Technique | Status | Notes |
+|-----------|--------|-------|
+| Fix GPU isolation bug | ✅ Done | `CUDA_VISIBLE_DEVICES` moved to Cell 1 top |
+| WildReceipt integration | ✅ Done | v3 dataset, ~46,500 train examples |
+| Encoder partial unfreeze | ⏳ After stable baseline | Unfreeze top 2–4 ViT blocks alongside LoRA — current performance ceiling |
+| Re-run Optuna | ⏳ After epoch 1 confirmed | Previous LR was tuned against corrupted DataParallel val — may need retuning on v3 |
+
+### Tier 2 — Medium impact
+| Technique | Status | Notes |
+|-----------|--------|-------|
+| Label smoothing | Not yet | Helps with noisy WildReceipt labels. Value: 0.1 |
+| LoRA rank increase | Not yet | r=16 → r=32, adds ~3M params, may help with WildReceipt diversity |
+| Gradient accumulation | Commented out | `gradient_accumulation_steps=2` for effective batch 16 if OOM after encoder unfreeze |
+
+### Tier 3 — Lower priority
+| Technique | Status | Notes |
+|-----------|--------|-------|
+| Beam search tuning | Not yet | `num_beams=4` → 6–8 at inference, no retraining needed |
+| WildReceipt weighting | Not yet | Currently 1× — monitor if it dominates training signal |
+
+---
+
+## Part 14: Runtime Estimate (v3, Single GPU T4)
+
+| Phase | Duration |
+|-------|----------|
+| Dataset build (first time only) | ~30–40 min |
+| Dataset load from disk (subsequent) | ~2 min |
+| 8 epochs training, ~46,500 examples, batch 8 | ~10–11 hours |
+| Test evaluation (manual loop, ~9,300 samples) | ~45–60 min |
+| **Total first session** | **~12 hours** |
+
+Use **Save & Run All** — not draft mode. Draft mode does not commit outputs to Kaggle.
+
+---
+
+## Part 15: Troubleshooting
 
 | Issue | Fix |
-|---|---|
-| `TypeError: unexpected keyword argument 'tokenizer'` / `ValueError: you provided ['pixel_values', 'labels']` | Don't pass `tokenizer` or `processing_class` to `Seq2SeqTrainer` for vision-encoder-decoder models. Use a custom `data_collator` instead (see Trainer cell above) |
-| `ValueError: You have modified the pretrained model configuration to control generation` | Generation params (`num_beams`, `early_stopping`, etc.) must go on `model.generation_config`, not `model.config` — see model setup cell |
-| `TypeError: unexpected keyword argument 'evaluation_strategy'` | Renamed to `eval_strategy` in transformers 4.46+ — use `eval_strategy="epoch"` |
-| `AttributeError: 'str' object has no attribute 'get'` | CORD menu items aren't always dicts — fixed by `if not isinstance(item, dict): continue` in `extract_cord_text` |
-| Kernel OOM / restart | Root cause: list comprehension materialized all images as both PIL objects and bytes simultaneously. Fixed by `iter_to_dataset()` which encodes one image at a time, plus processing one split at a time with `del cord` / `del sroie` between them |
-| `KeyError: 'image'` in `preprocess_trocr` | Dataset now stores `image_bytes`, not `image` — use `Image.open(io.BytesIO(example["image_bytes"]))` |
-| Dataset rebuilds every session | `build_and_save_dataset()` checks if `SAVE_PATH` exists first — if yes, loads from disk and skips all reprocessing |
-| CUDA OOM during training on batch 8 | Reduce to `per_device_train_batch_size=4`, add `gradient_accumulation_steps=2` |
-| `OSError: [Errno 30] Read-only file system` in `.map()` | `/kaggle/input/` is read-only — HuggingFace tries to write cache there. Fix: use `keep_in_memory=True` in each `.map()` call instead of `cache_file_name` |
-| `OSError: [Errno 28] No space left on device` in `.map()` | Cache writing to a read-only path (e.g. `/kaggle/input/`). Fix: always point `cache_file_name` to `/kaggle/working/` which has ~20GB free |
-| RAM OOM with `keep_in_memory=True` / `OSError Errno 28` with `cache_file_name` | 31k preprocessed examples exceed both Kaggle RAM and disk. Final fix: use `TrOCRDataset(TorchDataset)` which preprocesses on-the-fly per item — zero disk, zero RAM accumulation, full dataset used |
-| `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained(...)` |
-| Kaggle session timeout before training ends | Save checkpoints every epoch (`save_strategy="epoch"`) and resume with `trainer.train(resume_from_checkpoint=True)` |
-| `AttributeError: 'NoneType' object has no attribute 'load_state_dict'` when resuming | Checkpoint was saved with `fp16=True` but session resumed without it. Ensure `fp16=True` is in `training_args` when resuming. The scaler state in the checkpoint requires fp16 to be active. |
-| `Missing keys: ['decoder.output_projection.weight']` | Harmless TrOCR architecture warning — this weight is not used during seq2seq generation. Safe to ignore. |
-| Output files lost after session ends | Quick Save only saves code, not outputs. Use **Save & Run All** to commit `/kaggle/working/` contents permanently. Then create Kaggle datasets from the Output tab. |
-| `UserWarning: Argument 'var_limit' not valid for GaussNoise` | Albumentations API changed — use `A.GaussNoise(p=0.4)` and `A.ImageCompression(p=0.4)` without named quality/variance args |
-| `warmup_ratio is deprecated` warning | Harmless for now, will be removed in transformers v5.2 — no action needed yet |
-| `AttributeError: 'TrOCRDataset' object has no attribute 'select'` | `TrOCRDataset` is a PyTorch Dataset — no `.select()`. Use `combined_dataset["train"].select(...)` (HF dataset) then wrap in `TrOCRDataset()` |
-| Test CER much higher than val CER | Distribution gap between training data (CORD/SROIE receipts) and test set. Run Optuna first — if gap persists after best hyperparams, consider expanding data or increasing augmentation strength |
-| CORD train: 0 crops extracted | `quad` is NOT in `gt_parse.menu` — it's in `valid_line[].words[].quad`. Use `valid_line` grouped by `group_id` to extract crops, not `menu` items |
+|-------|-----|
+| DataParallel fires despite `CUDA_VISIBLE_DEVICES` | Env var was set after torch import. Must be first line of first cell. |
+| Test eval hangs for hours | Use manual loop with `w < 4 or h < 4` skip — never `trainer.evaluate()` on test set |
+| LoRA adapter resets on resume | `LoRASaveCallback` missing or not attached to trainer |
+| Stale checkpoints without `lora_adapter/` subdir | Trainer cell removes them: `shutil.rmtree(ckpt)` for any checkpoint missing `lora_adapter/` |
+| Dataset rebuilds every session | `DATASET_SAVE.exists()` check skips rebuild — only triggers if v3 path is not mounted |
+| OOM on batch 8 | Uncomment `gradient_accumulation_steps=2`, keep batch 8 |
+| WildReceipt images not found | Check `WILDRECEIPT_DIR` path; only needed during dataset build, not inference |
+| `AttributeError: 'TrOCRDataset' has no .select()` | Use `combined_dataset["train"].select(...)` (HF dataset) then wrap in `TrOCRDataset()` |
+| `GaussNoise` var_limit warning | Use `A.GaussNoise(p=0.5)` without named args — API changed in albumentations |
+| CORD train: 0 crops extracted | `quad` is in `valid_line[].words[].quad`, not in `gt_parse.menu` |
+| fp16 scaler error on resume | Ensure `fp16=True` in training_args when resuming — scaler state in checkpoint requires it |
+
+---
+
+## Part 16: DistilBERT NER (Stage 2 — Not Yet Started)
+
+CORD's structured `ground_truth` JSON maps directly to food NER schema: `nm` → `FOOD_ITEM`, `cnt` → `QUANTITY`, `price` → `PRICE`. No manual annotation needed. SROIE not used for NER (tags have zero overlap with food entities).
+
+Full NER fine-tuning documented here once TrOCR CER ≤ 0.05 is achieved and validated.
