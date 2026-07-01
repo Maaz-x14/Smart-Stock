@@ -61,15 +61,16 @@ TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 
 
 | Source | Train | Val | Test | Notes |
 |--------|-------|-----|------|-------|
-| CORD | ~2,105 | 221 | ~251 | Indonesian restaurant receipts |
-| SROIE | ~14,476 | — | ~8,050 | English retail receipts, **2× weighted in train** |
-| WildReceipt (train.txt → 90%) | ~11,400 | — | — | Diverse English receipts |
-| WildReceipt (train.txt → 10%) | — | ~1,267 | — | Val split from train.txt crops |
-| WildReceipt (test.txt, capped) | ~4,103→train | — | 1,000 | Excess test crops moved to train |
-| **Total v3** | **~46,500** | **~1,488** | **~9,301** | |
+| CORD | 2,105 | 221 | 251 | Indonesian restaurant receipts, line-level by group_id |
+| SROIE | 14,476 | — | 8,050 | English retail receipts, **2× weighted in train**, line-level by Y-proximity |
+| WildReceipt (train.txt → 90%) | 26,741 | — | — | Per-annotation crops |
+| WildReceipt (train.txt → 10%) | — | 2,972 | — | Val split from train.txt crops |
+| WildReceipt (test.txt, capped) | 10,665→train | — | 1,000 | Excess test crops moved to train |
+| **Total v3** | **68,463** | **3,193** | **9,301** | |
 
 **WildReceipt labels excluded:** 0 (empty/illegible), 25 (catch-all: terminal IDs, legal text, thank-you messages)  
-**WildReceipt line grouping:** relative Y-tolerance = max(10px, 2% of image height) — handles large images better than SROIE's fixed 15px  
+**WildReceipt cropping strategy:** per-annotation (not line grouping) — eliminates two-column merging bug  
+**Why per-annotation for WildReceipt only:** CORD groups by group_id (logical receipt lines, working well). SROIE uses Y-proximity (words well-spaced, no column issues). WildReceipt had two-column layouts causing Y-grouping to merge item names + prices into nonsense crops — corrupted ~33% of training data, caused CER regression 0.088 → 0.339  
 **Test capped at 1,000 WildReceipt crops** — prevents beam search hanging for hours (previous session lost 6+ hrs to this)
 
 ---
@@ -264,6 +265,9 @@ def extract_sroie_crops(image: Image.Image, words: list, bboxes: list) -> list:
 > Skip running — output already in `smart_stock_dataset_v3`. Defines `extract_wildreceipt_crops()`.  
 > This is a **new standalone cell** added for v3. Insert between SROIE extractor and Dataset Builder.
 
+**Why per-annotation crops (not line grouping):**  
+WildReceipt receipts have two-column layouts — item names on the left, prices on the right — with nearly identical Y coordinates per row. Y-proximity grouping merged left-column and right-column annotations into nonsense crops (e.g. `"*BtDietCoke £136.50 65.000@£2.10"` as one crop). This corrupted ~33% of training data and caused CER to regress from 0.088 → 0.339. Per-annotation cropping eliminates this entirely — each annotation becomes its own crop, no column detection needed. Also produces more training examples (29,713 vs 12,667 train crops from same images).
+
 ```python
 import json
 
@@ -279,13 +283,17 @@ WILDRECEIPT_EXCLUDE = {0, 25}
 def extract_wildreceipt_crops(annotation_file: Path) -> list:
     """
     Parse a WildReceipt annotation file (one JSON object per line).
-    Each line = one receipt image with a list of annotations.
-    Each annotation has: box (8 floats, clockwise from top-left), text, label.
+    Each annotation becomes its own crop — no line grouping.
 
-    Groups annotations into lines using relative Y-proximity (2% of image height,
-    min 10px). This handles WildReceipt's large images (1000-1800px tall) better
-    than SROIE's fixed 15px tolerance.
+    Why no grouping: WildReceipt has two-column layouts (item names left,
+    prices right) with nearly identical Y coordinates per row. Y-proximity
+    grouping merged columns into nonsense crops, corrupting ~33% of train data
+    and causing CER regression from 0.088 → 0.339.
 
+    Per-annotation cropping is also closer to TrOCR's pretraining distribution
+    (single word/phrase level crops) than multi-word line crops.
+
+    Each annotation box: [x1,y1, x2,y1, x2,y2, x1,y2] clockwise from top-left.
     Returns list of (PIL.Image, text) pairs.
     """
     crops = []
@@ -311,61 +319,30 @@ def extract_wildreceipt_crops(annotation_file: Path) -> list:
                 continue
 
             img_w, img_h = image.size
-            # Relative tolerance: 2% of image height, minimum 10px
-            y_tolerance = max(10, int(img_h * 0.02))
 
-            # Filter excluded labels and empty text
-            valid_annotations = [
-                ann for ann in record["annotations"]
-                if ann["label"] not in WILDRECEIPT_EXCLUDE
-                and ann.get("text", "").strip()
-            ]
-
-            if not valid_annotations:
-                continue
-
-            # Box format: [x1,y1, x2,y1, x2,y2, x1,y2] — clockwise from top-left
-            def ann_coords(ann):
-                box = ann["box"]
-                xs = [box[0], box[2], box[4], box[6]]
-                ys = [box[1], box[3], box[5], box[7]]
-                center_y = (min(ys) + max(ys)) / 2
-                return center_y, min(xs), min(ys), max(xs), max(ys)
-
-            # Sort by center Y (top to bottom), then X (left to right within a line)
-            parsed = []
-            for ann in valid_annotations:
-                cy, x1, y1, x2, y2 = ann_coords(ann)
-                parsed.append((cy, x1, y1, x2, y2, ann["text"].strip()))
-
-            parsed.sort(key=lambda r: (r[0], r[1]))
-
-            # Group into lines by Y-proximity
-            lines = []
-            current_line = [parsed[0]]
-            for item in parsed[1:]:
-                if abs(item[0] - current_line[-1][0]) <= y_tolerance:
-                    current_line.append(item)
-                else:
-                    lines.append(current_line)
-                    current_line = [item]
-            lines.append(current_line)
-
-            # Crop each line region
-            for line_items in lines:
-                text = " ".join(item[5] for item in line_items)
+            for ann in record["annotations"]:
+                # Skip excluded labels and empty text
+                if ann["label"] in WILDRECEIPT_EXCLUDE:
+                    continue
+                text = ann.get("text", "").strip()
                 if not text:
                     continue
 
-                x1 = max(0, min(item[1] for item in line_items))
-                y1 = max(0, min(item[2] for item in line_items))
-                x2 = min(img_w, max(item[3] for item in line_items))
-                y2 = min(img_h, max(item[4] for item in line_items))
+                # Box: [x1,y1, x2,y1, x2,y2, x1,y2]
+                box = ann["box"]
+                xs = [box[0], box[2], box[4], box[6]]
+                ys = [box[1], box[3], box[5], box[7]]
 
+                x1 = max(0, int(min(xs)))
+                y1 = max(0, int(min(ys)))
+                x2 = min(img_w, int(max(xs)))
+                y2 = min(img_h, int(max(ys)))
+
+                # Skip degenerate crops — beam search hangs on these
                 if x2 <= x1 or y2 <= y1:
                     continue
                 if (x2 - x1) < 4 or (y2 - y1) < 4:
-                    continue  # skip degenerate crops (same bug as test set hang)
+                    continue
 
                 crops.append((image.crop((x1, y1, x2, y2)), text))
 
@@ -756,7 +733,9 @@ from transformers import Seq2SeqTrainingArguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=str(CHECKPOINT_DIR),
 
-    num_train_epochs=8,                # 8 epochs — single GPU converges slower but cleaner
+    num_train_epochs=6,                # reduced from 8 — dataset grew to 68k, budget is 9.2hr vs 11.9hr at 8
+                                       # 6 epochs = 410,778 total steps vs 372,480 at 8 epochs on old 46k dataset
+                                       # more gradient updates than previous run despite fewer epochs
     per_device_train_batch_size=8,     # effective batch = 8 (no DataParallel)
     per_device_eval_batch_size=8,
 
