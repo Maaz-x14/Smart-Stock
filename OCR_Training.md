@@ -43,15 +43,17 @@ TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 
 | Phase | Time |
 |-------|------|
 | pip installs | ~3 min |
-| Dataset load from disk (v3 already built) | ~2 min |
+| Dataset load from disk (v3 saved, no rebuild) | ~2 min |
 | Model setup | ~2 min |
-| 8 epochs × 5,813 steps × ~0.55s (fp16, LoRA, frozen enc) | ~7.1 hr |
-| Val eval × 8 epochs (1,488 samples) | ~8 min |
+| 8 epochs × 8,558 steps × ~0.55s (fp16, LoRA, frozen enc) | ~10.5 hr |
+| Val eval × 8 epochs (3,193 samples) | ~16 min |
 | Save & Export | ~5 min |
 | Test eval — manual loop, 9,301 samples, beam=4 | ~60 min |
-| **Total** | **~8.5 hr** ✅ fits within 12 hr |
+| **Total** | **~12.0 hr** ⚠️ tight |
 
-**If first-time dataset build:** add ~35 min for CORD + SROIE + WildReceipt download and crop extraction. Total ~9 hr — still fits.
+> **If running 8 epochs with 68k dataset, monitor closely.** If epoch 1 takes longer than 80 min, reduce to 6 epochs. With `load_best_model_at_end=True` the best checkpoint is saved automatically so you won't lose the best model even if you have to stop early.
+>
+> **After partial encoder unfreeze:** each step will be slower (~0.7s vs 0.55s). Reduce to 5–6 epochs when unfreezing encoder blocks.
 
 **Use Save & Run All — never draft mode.** Draft mode does not commit `/kaggle/working/` outputs.
 
@@ -79,9 +81,13 @@ TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 
 
 | Kaggle slug | Path | Purpose |
 |-------------|------|---------|
-| `smart-stock-dataset-v3` | `/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/smart_stock_dataset_v3` | Combined dataset, load directly |
-| `wild-receipt` | `/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt` | Raw images + annotations, needed only during first build |
-| `trocr-smart-stock-best` | `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/content/drive/MyDrive/SmartStock/trocr-smart-stock-best` | Base model weights (CER 0.0856) |
+| `smart-stock-model-data` | `/kaggle/input/datasets/maazahmad69/smart-stock-model-data/smart_stock_dataset_v3` | Combined v3 dataset |
+| `smart-stock-model-data` | `/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock-best` | Best model weights (CER 0.0771) |
+| `smart-stock-model-data` | `/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock` | Prior session checkpoints (resume fallback) |
+| `wild-receipt` | `/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt` | Raw images + annotations, needed only during first dataset build |
+
+> All model data lives in one dataset: **smart-stock-model-data**
+> URL: https://www.kaggle.com/datasets/maazahmad69/smart-stock-model-data
 
 ---
 
@@ -109,16 +115,16 @@ INPUT_DIR   = Path("/kaggle/input")
 WORKING_DIR = Path("/kaggle/working")
 
 # v3 dataset (CORD + SROIE + WildReceipt) — loads from disk if exists, builds if not
-DATASET_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/smart_stock_dataset_v3")
+DATASET_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/smart_stock_dataset_v3")
 
 # WildReceipt raw input — only needed during dataset build cell
 WILDRECEIPT_DIR = Path("/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt")
 
 # Best model weights — loaded as base for fine-tuning
-MODEL_INPUT = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-best/content/drive/MyDrive/SmartStock/trocr-smart-stock-best")
+MODEL_INPUT = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock-best")
 
 # Checkpoint dir from previously uploaded dataset (fallback resume source)
-INPUT_CHECKPOINT_DIR = Path("/kaggle/input/smart-stock-dataset/trocr-smart-stock")
+INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock")
 
 # Output dirs — writable
 CHECKPOINT_DIR = WORKING_DIR / "trocr-smart-stock"
@@ -594,7 +600,7 @@ from peft import LoraConfig, get_peft_model, TaskType, PeftModel
 
 # INPUT_CHECKPOINT_DIR already defined in Cell 1
 # Redeclared here for clarity — safe to run again
-INPUT_CHECKPOINT_DIR = Path("/kaggle/input/smart-stock-dataset/trocr-smart-stock")
+INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock")
 
 # Load base model from stored best weights
 base_model = VisionEncoderDecoderModel.from_pretrained(str(MODEL_INPUT))
@@ -606,7 +612,7 @@ for param in base_model.encoder.parameters():
 
 # ── Checkpoint resume priority ────────────────────────────────────────────────
 # 1. /kaggle/working/trocr-smart-stock  (current session checkpoints, most recent)
-# 2. /kaggle/input/.../trocr-smart-stock (uploaded from prior session — fallback)
+# 2. /kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock (uploaded from prior session — fallback)
 # 3. Fresh LoRA (no prior checkpoint found)
 
 def find_lora_checkpoints(directory: Path):
@@ -733,9 +739,8 @@ from transformers import Seq2SeqTrainingArguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=str(CHECKPOINT_DIR),
 
-    num_train_epochs=6,                # reduced from 8 — dataset grew to 68k, budget is 9.2hr vs 11.9hr at 8
-                                       # 6 epochs = 410,778 total steps vs 372,480 at 8 epochs on old 46k dataset
-                                       # more gradient updates than previous run despite fewer epochs
+    num_train_epochs=8,                # back to 8 — dataset now saved to disk (no rebuild cost)
+                                       # val loss still dropping at epoch 6, model not converged
     per_device_train_batch_size=8,     # effective batch = 8 (no DataParallel)
     per_device_eval_batch_size=8,
 
@@ -744,18 +749,20 @@ training_args = Seq2SeqTrainingArguments(
     warmup_ratio=0.02672,
     weight_decay=0.01,
 
-    # Cosine with restarts — helps escape local minima mid-training
-    # 2 restarts over 8 epochs = restart at epoch ~4
+    # Single cosine decay — more stable than restarts for fine-tuning
+    # Restarts caused CER oscillation in v3 run 2 (0.092→0.079→0.088→0.077→0.082→0.078)
+    # num_cycles=2 caused a restart at epoch ~3 which temporarily spiked CER
     lr_scheduler_type="cosine_with_restarts",
-    lr_scheduler_kwargs={"num_cycles": 2},
+    lr_scheduler_kwargs={"num_cycles": 1},
 
     max_grad_norm=1.0,
 
     eval_strategy="epoch",
-    save_strategy="steps",
-    save_steps=500,
-    load_best_model_at_end=False,
-    save_total_limit=5,
+    save_strategy="epoch",           # must match eval_strategy for load_best_model_at_end
+    load_best_model_at_end=True,     # was False — caused epoch 6 to be saved even though epoch 4 was best
+    metric_for_best_model="eval_cer",
+    greater_is_better=False,
+    save_total_limit=3,
 
     predict_with_generate=True,
     generation_max_length=128,
@@ -1065,6 +1072,8 @@ for fname in expected_files:
 ### Cell 16 — Evaluate on Test Set
 
 > **Never use `trainer.evaluate(test_dataset)`** — hangs on degenerate 1-pixel-wide crops in the test set. The previous session lost 6+ hours to this. Always use the manual loop below.
+>
+> **Critical:** `model.generate()` must use keyword argument `pixel_values=pixel_values` not positional. `PeftModelForSeq2SeqLM.generate()` does not accept positional args — caused all 9,301 test samples to be skipped silently in v3 run 2 with 0.0000 CER reported.
 
 ```python
 from jiwer import cer, wer
@@ -1072,28 +1081,49 @@ from jiwer import cer, wer
 model.eval()
 all_preds, all_labels = [], []
 skipped = 0
+first_error_printed = False
 
-for sample in combined_dataset["test"]:
+for idx, sample in enumerate(combined_dataset["test"]):
     try:
         image = Image.open(io.BytesIO(sample["image_bytes"])).convert("RGB")
         w, h = image.size
         if w < 4 or h < 4:          # skip degenerate crops — beam search hangs on these
             skipped += 1
             continue
-        pixel_values = processor(images=image, return_tensors="pt").pixel_values.to(model.device)
+
+        pixel_values = processor(
+            images=image, return_tensors="pt"
+        ).pixel_values.to(model.device)
+
         with torch.no_grad():
-            generated_ids = model.generate(pixel_values)
+            # MUST be keyword arg — PeftModelForSeq2SeqLM.generate() does not
+            # accept positional pixel_values. Silently skipped all 9301 samples
+            # in v3 run 2 when passed positionally.
+            generated_ids = model.generate(
+                pixel_values=pixel_values,
+                max_new_tokens=128,
+            )
+
         pred = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
         all_preds.append(pred)
         all_labels.append(sample["text"])
-    except Exception:
+
+    except Exception as e:
+        if not first_error_printed:
+            print(f"First exception at idx={idx}: {type(e).__name__}: {e}")
+            first_error_printed = True
         skipped += 1
 
-test_cer = cer(all_labels, all_preds)
-test_wer = wer(all_labels, all_preds)
-print(f"Test CER : {test_cer:.4f}")
-print(f"Test WER : {test_wer:.4f}")
+if all_preds:
+    test_cer = cer(all_labels, all_preds)
+    test_wer = wer(all_labels, all_preds)
+    print(f"Test CER : {test_cer:.4f}")
+    print(f"Test WER : {test_wer:.4f}")
+else:
+    print("No predictions collected — all samples skipped or errored")
+
 print(f"Skipped  : {skipped} / {len(combined_dataset['test'])}")
+print(f"Evaluated: {len(all_preds)} / {len(combined_dataset['test'])}")
 
 # Targets: CER ≤ 0.05, WER ≤ 0.10
 ```
@@ -1114,7 +1144,7 @@ pixel_values = processor(
     return_tensors="pt"
 ).pixel_values.to(model.device)
 
-generated_ids = model.generate(pixel_values)
+generated_ids = model.generate(pixel_values=pixel_values, max_new_tokens=128)
 
 prediction = processor.batch_decode(
     generated_ids,
@@ -1135,16 +1165,19 @@ image
 
 ## Training History
 
-| Run | Setup | Best Val CER | Notes |
-|-----|-------|-------------|-------|
-| Full finetune | All 333M params | 0.1758 | Plateau, optimizer instability |
-| LoRA first (Colab) | Frozen enc + LoRA dec | 0.0894 | 1 epoch only — best so far |
-| Optuna search | 1 epoch, 1/8 data, batch 4 | 0.0803–0.0886 | Best: lr=1.4824e-4, warmup=0.02672 |
-| Kaggle run 1 | 5 epochs, DataParallel batch 16 | 0.1325→0.1372 | DataParallel doubled batch silently |
-| Kaggle run 2 | 8 epochs, attempted single GPU | 0.1332 | DataParallel still fired — env var after torch import |
-| **v3 run (next)** | Single GPU confirmed, v3 46.5K train | **TBD** | All bugs fixed, WildReceipt added |
+| Run | Setup | Best Val CER | Best Val WER | Notes |
+|-----|-------|-------------|-------------|-------|
+| Full finetune | All 333M params | 0.1758 | — | Plateau, optimizer instability |
+| LoRA first (Colab) | Frozen enc + LoRA dec | 0.0894 | — | 1 epoch only |
+| Optuna search | 1 epoch, 1/8 data, batch 4 | 0.0803–0.0886 | — | Best: lr=1.4824e-4, warmup=0.02672 |
+| Kaggle run 1 | 5 epochs, DataParallel batch 16 | 0.1325 | — | DataParallel doubled batch silently |
+| Kaggle run 2 | 8 epochs, attempted single GPU | 0.1332 | — | DataParallel still fired — env var after torch import |
+| v3 run 1 | 6 epochs, v3 46.5K train, WR line-grouped | 0.3396 | 0.5942 | WildReceipt column merging bug corrupted 33% of data |
+| **v3 run 2 (current best)** | 6 epochs, v3 68.5K train, WR per-annotation | **0.0771** | **0.2383** | New best — saved as `trocr-smart-stock-best` |
 
-**Stored best:** `trocr-smart-stock-best` — CER 0.0856 (Colab LoRA, 1 epoch). Benchmark for all future runs.
+**Stored best:** `trocr-smart-stock-best` — CER 0.0771, WER 0.2383 (v3 run 2, epoch 4 was best at 0.0771 but `load_best_model_at_end=False` saved epoch 6 at 0.0782).
+
+**Key observation:** CER/WER gap (~3×) is expected for receipt OCR — one wrong character fails entire words like `"BCCHOCCUPCAKES"`. WER improves naturally as CER improves, not a separate problem.
 
 ---
 
@@ -1160,6 +1193,11 @@ Test set contains 1-pixel-wide image crops (`torch.Size([3, 42, 1])`). Beam sear
 
 **Fix:** Manual loop in Cell 16 skips any sample with `w < 4 or h < 4`. Never use `trainer.evaluate()` on the test set.
 
+### Bug 4 — Test eval skips all samples silently ✅ FIXED
+`model.generate(pixel_values)` — passing `pixel_values` as a positional argument to `PeftModelForSeq2SeqLM.generate()` raises `TypeError: takes 1 positional argument but 2 were given`. The `except Exception` block silently swallowed this on every sample, reporting CER 0.0000 and WER 0.0000 with all 9,301 samples skipped. Affected v3 run 2 entirely — true test CER from that run is unknown.
+
+**Fix:** Use keyword argument: `model.generate(pixel_values=pixel_values, max_new_tokens=128)`. Also added `first_error_printed` flag so the first exception surfaces instead of being swallowed.
+
 ### Bug 3 — PEFT checkpoint adapter reset ✅ FIXED
 Without `LoRASaveCallback`, PEFT silently restores base model config instead of adapter weights on checkpoint resume. Training effectively restarts from scratch each time.
 
@@ -1169,12 +1207,14 @@ Without `LoRASaveCallback`, PEFT silently restores base model config instead of 
 
 ## Improvement Roadmap
 
-### Tier 1 — Do next (after stable v3 baseline confirmed)
+### Tier 1 — Do next
 
-| Technique | When | Notes |
-|-----------|------|-------|
-| Partial encoder unfreeze | After epoch 1 confirms CER ~0.088 | Unfreeze top 2–4 ViT blocks. Biggest remaining performance lever. Add `gradient_accumulation_steps=2` if OOM. |
-| Re-run Optuna | After epoch 1 confirmed | LR was tuned against corrupted DataParallel runs. Re-tune on clean v3 + single GPU in a dedicated session. |
+| Technique | Status | Notes |
+|-----------|--------|-------|
+| Fix `load_best_model_at_end=False` | ✅ Fixed in next run config | Was saving epoch 6 even when epoch 4 had best CER. Now saves true best. |
+| Switch to `num_cycles=1` | ✅ Fixed in next run config | 2 restarts caused CER oscillation. Single cosine decay more stable. |
+| Partial encoder unfreeze | ⏳ Next run | Unfreeze top 2–4 ViT encoder blocks alongside LoRA. Biggest remaining performance lever. Add `gradient_accumulation_steps=2` if OOM after unfreezing. |
+| Re-run Optuna | ⏳ After 1 stable epoch with unfrozen encoder | LR tuned on frozen encoder — gradient flow changes after unfreeze. Dedicated session only. |
 
 ### Tier 2 — Medium impact
 
@@ -1212,7 +1252,11 @@ Without `LoRASaveCallback`, PEFT silently restores base model config instead of 
 | `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained()`. |
 | Outputs lost after session | Quick Save = code only. Use **Save & Run All** to commit `/kaggle/working/` permanently. |
 | `warmup_ratio is deprecated` | Harmless for now, will be removed in transformers v5.2. |
-| CER regresses after adding WildReceipt | WildReceipt has some noisy labels. Consider adding `label_smoothing_factor=0.1`. |
+| CER regresses after adding WildReceipt | Was caused by two-column merging bug in Y-proximity grouping — fixed by switching to per-annotation crops. |
+| `model.generate(pixel_values)` TypeError | PeftModelForSeq2SeqLM doesn't accept positional args. Use `model.generate(pixel_values=pixel_values, max_new_tokens=128)`. |
+| Test eval reports 0.0000 CER with all samples skipped | Silent exception swallowing. Check `first_error_printed` output — likely the generate() positional arg bug above. |
+| Best epoch not saved — final epoch saved instead | `load_best_model_at_end=False` in training_args. Set to True with `metric_for_best_model="eval_cer"`, `greater_is_better=False`, and `save_strategy="epoch"` matching `eval_strategy`. |
+| CER oscillates between epochs (e.g. 0.092→0.079→0.088) | `num_cycles=2` in cosine_with_restarts causes LR spikes at restart points. Switch to `num_cycles=1` for stable decay. |
 
 ---
 
