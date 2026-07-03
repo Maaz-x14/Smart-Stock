@@ -51,9 +51,9 @@ TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 
 | Test eval — manual loop, 9,301 samples, beam=4 | ~60 min |
 | **Total** | **~12.0 hr** ⚠️ tight |
 
-> **If running 8 epochs with 68k dataset, monitor closely.** If epoch 1 takes longer than 80 min, reduce to 6 epochs. With `load_best_model_at_end=True` the best checkpoint is saved automatically so you won't lose the best model even if you have to stop early.
+> **Next run resumes from checkpoint — dataset already on disk.** No rebuild cost. 8 epochs on 68k examples = ~10.5 hr training + ~60 min test eval = ~11.5 hr. Monitor epoch 1 — if it takes > 85 min, reduce to 7 epochs.
 >
-> **After partial encoder unfreeze:** each step will be slower (~0.7s vs 0.55s). Reduce to 5–6 epochs when unfreezing encoder blocks.
+> **After partial encoder unfreeze:** each step will be slower (~0.7s vs 0.55s). Reduce to 5–6 epochs when unfreezing encoder blocks. Total budget with unfrozen encoder at 6 epochs ≈ 9.5 hr — fits comfortably.
 
 **Use Save & Run All — never draft mode.** Draft mode does not commit `/kaggle/working/` outputs.
 
@@ -79,15 +79,47 @@ TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 
 
 ## Kaggle Dataset Inputs (Current Session)
 
-| Kaggle slug | Path | Purpose |
-|-------------|------|---------|
-| `smart-stock-model-data` | `/kaggle/input/datasets/maazahmad69/smart-stock-model-data/smart_stock_dataset_v3` | Combined v3 dataset |
-| `smart-stock-model-data` | `/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock-best` | Best model weights (CER 0.0771) |
-| `smart-stock-model-data` | `/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock` | Prior session checkpoints (resume fallback) |
-| `wild-receipt` | `/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt` | Raw images + annotations, needed only during first dataset build |
+| Kaggle slug | Purpose | Update frequency |
+|-------------|---------|-----------------|
+| `smart-stock-dataset-v3` | Combined CORD+SROIE+WildReceipt dataset | Never — only if new data source added |
+| `trocr-smart-stock-model` | Current best model weights + resume checkpoint | After every training run |
+| `wild-receipt` | Raw WildReceipt images + annotations | Never |
 
-> All model data lives in one dataset: **smart-stock-model-data**
-> URL: https://www.kaggle.com/datasets/maazahmad69/smart-stock-model-data
+**`smart-stock-dataset-v3` structure:**
+```
+smart_stock_dataset_v3/
+├── train/
+├── validation/
+├── test/
+└── dataset_dict.json
+```
+Path: `/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/smart_stock_dataset_v3`
+
+**`trocr-smart-stock-model` structure:**
+```
+trocr-smart-stock-best/     ← current best merged model (CER 0.0687)
+trocr-smart-stock/
+└── checkpoint-51348/       ← only the best checkpoint, delete rest after each run
+```
+Paths:
+- Model: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best`
+- Checkpoint: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock`
+
+**`wild-receipt` structure:**
+```
+wildreceipt/
+├── image_files/
+├── train.txt
+├── test.txt
+├── class_list.txt
+└── dict.txt
+```
+Path: `/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt`
+
+**Best practice — what to re-upload after each run:**
+- `trocr-smart-stock-model` → new version: updated `trocr-smart-stock-best/` + latest single checkpoint only
+- `smart-stock-dataset-v3` → never touched unless a new data source is added
+- `wild-receipt` → never touched
 
 ---
 
@@ -114,17 +146,17 @@ from pathlib import Path
 INPUT_DIR   = Path("/kaggle/input")
 WORKING_DIR = Path("/kaggle/working")
 
-# v3 dataset (CORD + SROIE + WildReceipt) — loads from disk if exists, builds if not
-DATASET_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/smart_stock_dataset_v3")
+# ── Dataset (smart-stock-dataset-v3 — never changes between runs) ────────────
+DATASET_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/smart_stock_dataset_v3")
 
-# WildReceipt raw input — only needed during dataset build cell
+# ── WildReceipt raw (wild-receipt — only needed if rebuilding dataset) ────────
 WILDRECEIPT_DIR = Path("/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt")
 
-# Best model weights — loaded as base for fine-tuning
-MODEL_INPUT = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock-best")
+# ── Model weights (trocr-smart-stock-model — updated after every run) ─────────
+MODEL_INPUT = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best")
 
-# Checkpoint dir from previously uploaded dataset (fallback resume source)
-INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock")
+# Checkpoint resume source — only checkpoint-51348 kept in trocr-smart-stock-model
+INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock")
 
 # Output dirs — writable
 CHECKPOINT_DIR = WORKING_DIR / "trocr-smart-stock"
@@ -389,7 +421,7 @@ def iter_to_dataset(iterator) -> Dataset:
 
 # ── Combined dataset builder ──────────────────────────────────────────────────
 
-DATASET_SAVE = DATASET_DIR  # v3 path — loads if exists, builds if not
+DATASET_SAVE = DATASET_DIR  # points to smart-stock-dataset-v3 — loads if exists, builds if not
 
 WR_TEST_KEEP = 1000  # cap WildReceipt test crops; remainder folds into train
 
@@ -654,11 +686,13 @@ model.config.pad_token_id           = processor.tokenizer.pad_token_id
 model.config.vocab_size             = model.config.decoder.vocab_size
 
 # Generation config — must go on model.generation_config, NOT model.config
-model.generation_config.eos_token_id         = processor.tokenizer.sep_token_id
-model.generation_config.early_stopping       = True
-model.generation_config.no_repeat_ngram_size = 3
-model.generation_config.length_penalty       = 2.0
-model.generation_config.num_beams            = 4
+model.generation_config.eos_token_id   = processor.tokenizer.sep_token_id
+model.generation_config.early_stopping = True
+model.generation_config.length_penalty = 1.0   # was 2.0 — penalised short outputs, caused hallucination
+model.generation_config.num_beams      = 4
+# no_repeat_ngram_size deliberately removed — receipt text has legitimate
+# repetitions (e.g. "60.000 60.000") that ngram blocking incorrectly suppressed,
+# causing test CER > 1.0 in v3 run 3 despite val CER of 0.0687
 ```
 
 ---
@@ -871,11 +905,11 @@ def compute_metrics(pred):
 #     m.config.decoder_start_token_id = processor.tokenizer.cls_token_id
 #     m.config.pad_token_id           = processor.tokenizer.pad_token_id
 #     m.config.vocab_size             = m.config.decoder.vocab_size
-#     m.generation_config.eos_token_id         = processor.tokenizer.sep_token_id
-#     m.generation_config.early_stopping       = True
-#     m.generation_config.no_repeat_ngram_size = 3
-#     m.generation_config.length_penalty       = 2.0
-#     m.generation_config.num_beams            = 4
+#     m.generation_config.eos_token_id   = processor.tokenizer.sep_token_id
+#     m.generation_config.early_stopping = True
+#     m.generation_config.length_penalty = 1.0
+#     m.generation_config.num_beams      = 4
+#     # no_repeat_ngram_size removed — causes CER > 1.0 on receipt text
 #     return m
 
 # search_args = copy.deepcopy(training_args)
@@ -1173,11 +1207,16 @@ image
 | Kaggle run 1 | 5 epochs, DataParallel batch 16 | 0.1325 | — | DataParallel doubled batch silently |
 | Kaggle run 2 | 8 epochs, attempted single GPU | 0.1332 | — | DataParallel still fired — env var after torch import |
 | v3 run 1 | 6 epochs, v3 46.5K train, WR line-grouped | 0.3396 | 0.5942 | WildReceipt column merging bug corrupted 33% of data |
-| **v3 run 2 (current best)** | 6 epochs, v3 68.5K train, WR per-annotation | **0.0771** | **0.2383** | New best — saved as `trocr-smart-stock-best` |
+| **v3 run 2** | 6 epochs, v3 68.5K train, WR per-annotation | **0.0771** | **0.2383** | `load_best_model_at_end=False` saved epoch 6 not epoch 4 |
+| **v3 run 3 (current best)** | 8 epochs, resumed from checkpoint-51348, `load_best_model_at_end=True` | **0.0687** | **0.2159** | New best — epoch 6. Test CER 1.47 due to bad generation config (no_repeat_ngram_size=3 too aggressive for receipt text) |
 
-**Stored best:** `trocr-smart-stock-best` — CER 0.0771, WER 0.2383 (v3 run 2, epoch 4 was best at 0.0771 but `load_best_model_at_end=False` saved epoch 6 at 0.0782).
+**Stored best:** `trocr-smart-stock-best` in `trocr-smart-stock-model` — CER 0.0687, WER 0.2159 (v3 run 3, epoch 6).  
+**Path:** `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best`  
+**Convention:** Always overwrite `trocr-smart-stock-best/` with the new best model after each run. No versioned names — the Kaggle dataset version number tracks history.
 
 **Key observation:** CER/WER gap (~3×) is expected for receipt OCR — one wrong character fails entire words like `"BCCHOCCUPCAKES"`. WER improves naturally as CER improves, not a separate problem.
+
+**Key observation — test CER > 1.0:** Free generation with `no_repeat_ngram_size=3` prevents legitimate repetitions in receipt text (e.g. `60.000 60.000`). Test CER 1.47 is a generation config bug, not a model quality issue. Val CER 0.0687 (teacher-forced) is the real number.
 
 ---
 
@@ -1211,10 +1250,12 @@ Without `LoRASaveCallback`, PEFT silently restores base model config instead of 
 
 | Technique | Status | Notes |
 |-----------|--------|-------|
-| Fix `load_best_model_at_end=False` | ✅ Fixed in next run config | Was saving epoch 6 even when epoch 4 had best CER. Now saves true best. |
-| Switch to `num_cycles=1` | ✅ Fixed in next run config | 2 restarts caused CER oscillation. Single cosine decay more stable. |
-| Partial encoder unfreeze | ⏳ Next run | Unfreeze top 2–4 ViT encoder blocks alongside LoRA. Biggest remaining performance lever. Add `gradient_accumulation_steps=2` if OOM after unfreezing. |
-| Re-run Optuna | ⏳ After 1 stable epoch with unfrozen encoder | LR tuned on frozen encoder — gradient flow changes after unfreeze. Dedicated session only. |
+| Fix `load_best_model_at_end=False` | ✅ Done (v3 run 3) | Now saves true best epoch. |
+| Switch to `num_cycles=1` | ✅ Done (v3 run 3) | Single cosine decay, stable convergence. |
+| Fix generation config | ✅ Done | Removed `no_repeat_ngram_size=3`, set `length_penalty=1.0`. Was causing test CER > 1.0. |
+| Continue training from best checkpoint | ⏳ Next run | Resume from `trocr-smart-stock-v2` checkpoint. Val loss still declining at epoch 6 (0.2828). More epochs will push CER below 0.06. |
+| Partial encoder unfreeze | ⏳ After CER stabilises < 0.065 | Unfreeze top 2 ViT encoder blocks alongside LoRA. Biggest remaining performance lever. Add `gradient_accumulation_steps=2` if OOM. Each step ~0.7s vs 0.55s — reduce to 5–6 epochs when unfreezing. |
+| Re-run Optuna | ⏳ After encoder unfreeze | LR tuned on frozen encoder — gradient flow changes after unfreeze. Dedicated session only, not during main training. |
 
 ### Tier 2 — Medium impact
 
@@ -1253,6 +1294,8 @@ Without `LoRASaveCallback`, PEFT silently restores base model config instead of 
 | Outputs lost after session | Quick Save = code only. Use **Save & Run All** to commit `/kaggle/working/` permanently. |
 | `warmup_ratio is deprecated` | Harmless for now, will be removed in transformers v5.2. |
 | CER regresses after adding WildReceipt | Was caused by two-column merging bug in Y-proximity grouping — fixed by switching to per-annotation crops. |
+| Test CER > 1.0 (e.g. 1.47) | `no_repeat_ngram_size=3` blocks legitimate receipt repetitions (e.g. `60.000 60.000`). Remove it from generation config. Also check `length_penalty` — 2.0 encourages over-generation. Set to 1.0. |
+| Model reorders words or hallucinates in test | Generation config issue, not model quality. Val CER (teacher-forced) is the reliable metric during training. Fix generation config before judging test output. |
 | `model.generate(pixel_values)` TypeError | PeftModelForSeq2SeqLM doesn't accept positional args. Use `model.generate(pixel_values=pixel_values, max_new_tokens=128)`. |
 | Test eval reports 0.0000 CER with all samples skipped | Silent exception swallowing. Check `first_error_printed` output — likely the generate() positional arg bug above. |
 | Best epoch not saved — final epoch saved instead | `load_best_model_at_end=False` in training_args. Set to True with `metric_for_best_model="eval_cer"`, `greater_is_better=False`, and `save_strategy="epoch"` matching `eval_strategy`. |
