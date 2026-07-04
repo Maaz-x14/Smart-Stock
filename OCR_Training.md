@@ -102,8 +102,8 @@ trocr-smart-stock/
 └── checkpoint-51348/       ← only the best checkpoint, delete rest after each run
 ```
 Paths:
-- Model: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best`
-- Checkpoint: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock`
+- Model: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best/trocr-smart-stock-best`
+- Checkpoint: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock/trocr-smart-stock/checkpoint-51348`
 
 **`wild-receipt` structure:**
 ```
@@ -153,10 +153,10 @@ DATASET_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/sm
 WILDRECEIPT_DIR = Path("/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt")
 
 # ── Model weights (trocr-smart-stock-model — updated after every run) ─────────
-MODEL_INPUT = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best")
+MODEL_INPUT = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best/trocr-smart-stock-best")
 
 # Checkpoint resume source — only checkpoint-51348 kept in trocr-smart-stock-model
-INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock")
+INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock/trocr-smart-stock/checkpoint-51348")
 
 # Output dirs — writable
 CHECKPOINT_DIR = WORKING_DIR / "trocr-smart-stock"
@@ -632,7 +632,7 @@ from peft import LoraConfig, get_peft_model, TaskType, PeftModel
 
 # INPUT_CHECKPOINT_DIR already defined in Cell 1
 # Redeclared here for clarity — safe to run again
-INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock")
+INPUT_CHECKPOINT_DIR = Path("/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock/trocr-smart-stock/checkpoint-51348")
 
 # Load base model from stored best weights
 base_model = VisionEncoderDecoderModel.from_pretrained(str(MODEL_INPUT))
@@ -644,7 +644,7 @@ for param in base_model.encoder.parameters():
 
 # ── Checkpoint resume priority ────────────────────────────────────────────────
 # 1. /kaggle/working/trocr-smart-stock  (current session checkpoints, most recent)
-# 2. /kaggle/input/datasets/maazahmad69/smart-stock-model-data/trocr-smart-stock (uploaded from prior session — fallback)
+# 2. /kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock/trocr-smart-stock/checkpoint-51348 (uploaded from prior session — fallback)
 # 3. Fresh LoRA (no prior checkpoint found)
 
 def find_lora_checkpoints(directory: Path):
@@ -1211,7 +1211,7 @@ image
 | **v3 run 3 (current best)** | 8 epochs, resumed from checkpoint-51348, `load_best_model_at_end=True` | **0.0687** | **0.2159** | New best — epoch 6. Test CER 1.47 due to bad generation config (no_repeat_ngram_size=3 too aggressive for receipt text) |
 
 **Stored best:** `trocr-smart-stock-best` in `trocr-smart-stock-model` — CER 0.0687, WER 0.2159 (v3 run 3, epoch 6).  
-**Path:** `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best`  
+**Path:** `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best/trocr-smart-stock-best`  
 **Convention:** Always overwrite `trocr-smart-stock-best/` with the new best model after each run. No versioned names — the Kaggle dataset version number tracks history.
 
 **Key observation:** CER/WER gap (~3×) is expected for receipt OCR — one wrong character fails entire words like `"BCCHOCCUPCAKES"`. WER improves naturally as CER improves, not a separate problem.
