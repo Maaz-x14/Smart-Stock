@@ -655,18 +655,22 @@ def find_lora_checkpoints(directory: Path):
     ])
 
 working_checkpoints = find_lora_checkpoints(CHECKPOINT_DIR)
-input_checkpoints   = find_lora_checkpoints(INPUT_CHECKPOINT_DIR) if INPUT_CHECKPOINT_DIR.exists() else []
 
 if working_checkpoints:
     latest = working_checkpoints[-1]
     adapter_path = latest / "lora_adapter" if (latest / "lora_adapter").exists() else latest
     model = PeftModel.from_pretrained(base_model, str(adapter_path), is_trainable=True)
     print(f"Resumed from working dir: {adapter_path}")
-elif input_checkpoints:
-    latest = input_checkpoints[-1]
-    adapter_path = latest / "lora_adapter" if (latest / "lora_adapter").exists() else latest
+
+elif INPUT_CHECKPOINT_DIR.exists() and (
+    (INPUT_CHECKPOINT_DIR / "lora_adapter").exists() or
+    (INPUT_CHECKPOINT_DIR / "adapter_config.json").exists()
+):
+    # INPUT_CHECKPOINT_DIR points directly to checkpoint-51348 — no glob needed
+    adapter_path = INPUT_CHECKPOINT_DIR / "lora_adapter" if (INPUT_CHECKPOINT_DIR / "lora_adapter").exists() else INPUT_CHECKPOINT_DIR
     model = PeftModel.from_pretrained(base_model, str(adapter_path), is_trainable=True)
     print(f"Resumed from input dir: {adapter_path}")
+
 else:
     lora_config = LoraConfig(
         task_type=TaskType.SEQ_2_SEQ_LM,
@@ -1012,11 +1016,20 @@ trainer = Seq2SeqTrainer(
 
 # Resume from latest valid checkpoint if available
 valid_checkpoints = sorted(CHECKPOINT_DIR.glob("checkpoint-*"))
-resume_from = str(valid_checkpoints[-1]) if valid_checkpoints else None
 
-if resume_from:
-    print(f"Resuming from: {resume_from}")
+if valid_checkpoints:
+    # Working dir has checkpoints from a previous run in this session
+    resume_from = str(valid_checkpoints[-1])
+    print(f"Resuming from working dir: {resume_from}")
+elif INPUT_CHECKPOINT_DIR.exists():
+    # No working checkpoints — resume from uploaded input checkpoint.
+    # This restores optimizer + scheduler state, not just model weights.
+    # NOTE: if AttributeError: NoneType.load_state_dict fires here,
+    # set resume_from = None — model weights still correct from Cell 8.
+    resume_from = str(INPUT_CHECKPOINT_DIR)
+    print(f"Resuming from input dir: {resume_from}")
 else:
+    resume_from = None
     print("Starting fresh training")
 
 trainer.train(resume_from_checkpoint=resume_from)
@@ -1232,6 +1245,21 @@ Test set contains 1-pixel-wide image crops (`torch.Size([3, 42, 1])`). Beam sear
 
 **Fix:** Manual loop in Cell 16 skips any sample with `w < 4 or h < 4`. Never use `trainer.evaluate()` on the test set.
 
+### Bug 5 — AttributeError: scaler.load_state_dict on Trainer resume ✅ DOCUMENTED
+When resuming from a checkpoint saved with `fp16=True`, the Trainer calls
+`self.accelerator.scaler.load_state_dict()` to restore the gradient scaler.
+In newer versions of transformers/accelerate, the scaler is `None` when fp16
+is handled differently, causing `AttributeError: 'NoneType' has no attribute 'load_state_dict'`.
+
+**Cause:** Checkpoint saved with one transformers version, resumed with a newer one
+where fp16 scaler initialization changed.
+
+**Fix:** If the error occurs, set `resume_from = None` in the Trainer cell for the
+input checkpoint branch. Model weights are already correctly loaded in Cell 8 via
+`PeftModel.from_pretrained()`. Only optimizer/LR schedule state is lost — the model
+weights are correct and training continues from the right parameter values.
+LR warmup will repeat for ~1,800 steps but model won't regress.
+
 ### Bug 4 — Test eval skips all samples silently ✅ FIXED
 `model.generate(pixel_values)` — passing `pixel_values` as a positional argument to `PeftModelForSeq2SeqLM.generate()` raises `TypeError: takes 1 positional argument but 2 were given`. The `except Exception` block silently swallowed this on every sample, reporting CER 0.0000 and WER 0.0000 with all 9,301 samples skipped. Affected v3 run 2 entirely — true test CER from that run is unknown.
 
@@ -1294,6 +1322,7 @@ Without `LoRASaveCallback`, PEFT silently restores base model config instead of 
 | Outputs lost after session | Quick Save = code only. Use **Save & Run All** to commit `/kaggle/working/` permanently. |
 | `warmup_ratio is deprecated` | Harmless for now, will be removed in transformers v5.2. |
 | CER regresses after adding WildReceipt | Was caused by two-column merging bug in Y-proximity grouping — fixed by switching to per-annotation crops. |
+| `AttributeError: 'NoneType' has no attribute 'load_state_dict'` on resume | Scaler state in checkpoint incompatible with current transformers version. Set `resume_from = None` in Trainer cell for input checkpoint branch. Model weights loaded correctly in Cell 8 — only optimizer state resets. |
 | Test CER > 1.0 (e.g. 1.47) | `no_repeat_ngram_size=3` blocks legitimate receipt repetitions (e.g. `60.000 60.000`). Remove it from generation config. Also check `length_penalty` — 2.0 encourages over-generation. Set to 1.0. |
 | Model reorders words or hallucinates in test | Generation config issue, not model quality. Val CER (teacher-forced) is the reliable metric during training. Fix generation config before judging test output. |
 | `model.generate(pixel_values)` TypeError | PeftModelForSeq2SeqLM doesn't accept positional args. Use `model.generate(pixel_values=pixel_values, max_new_tokens=128)`. |
