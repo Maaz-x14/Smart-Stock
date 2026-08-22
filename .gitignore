@@ -42,3 +42,5 @@ pip-wheel-metadata/
 # ---- Jupyter ----
 .ipynb_checkpoints/
 *.ipynb_checkpoints/
+
+kaggle.json
