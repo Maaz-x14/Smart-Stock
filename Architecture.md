@@ -1,4 +1,5 @@
 # Architecture.md — High-Level System Design
+
 ## Smart-Stock
 
 **Version:** 1.0
@@ -25,29 +26,29 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 │   ┌──────────────────────────────────────────────────────────┐      │
 │   │              React + TypeScript (Vite)                   │      │
 │   │                                                          │      │
-│   │  ┌────────────┐  ┌──────────────┐  ┌─────────────────┐  │      │
-│   │  │  Receipt   │  │   Virtual    │  │   Waste / Alert │  │      │
-│   │  │  Upload UI │  │  Fridge View │  │   Dashboard     │  │      │
-│   │  └────────────┘  └──────────────┘  └─────────────────┘  │      │
+│   │  ┌────────────┐  ┌──────────────┐  ┌─────────────────┐   │      │
+│   │  │  Receipt   │  │   Virtual    │  │   Waste / Alert │   │      │
+│   │  │  Upload UI │  │  Fridge View │  │   Dashboard     │   │      │
+│   │  └────────────┘  └──────────────┘  └─────────────────┘   │      │
 │   └──────────────────────────┬───────────────────────────────┘      │
-└─────────────────────────────-│─────────────────────────────────────┘
+└─────────────────────────────-│──────────────────────────────────────┘
                                │  HTTPS / REST + WebSocket
 ┌──────────────────────────────▼──────────────────────────────────────┐
 │                         API LAYER                                   │
 │                                                                     │
 │              FastAPI (Python 3.11) + Uvicorn                        │
 │                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
-│  │  /receipts   │  │  /inventory  │  │  /recipes  │  /alerts    │  │
-│  │  (upload,    │  │  (CRUD,      │  │  (fetch,   │  (schedule, │  │
-│  │   process)   │  │   list)      │  │   suggest) │   dismiss)  │  │
-│  └──────┬───────┘  └──────┬───────┘  └─────┬──────┴─────┬──────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
+│  │  /receipts   │  │  /inventory  │  │  /recipes  │  /alerts    │   │
+│  │  (upload,    │  │  (CRUD,      │  │  (fetch,   │  (schedule, │   │
+│  │   process)   │  │   list)      │  │   suggest) │   dismiss)  │   │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬─────┴──────┬──────┘   │
 │         │                 │                 │            │          │
 └─────────│─────────────────│─────────────────│────────────│──────────┘
           │                 │                 │            │
-┌─────────▼─────────────────│─────────────────│────────────│──────────┐
-│                    ML PIPELINE LAYER          │            │         │
-│                                              │            │         │
+┌─────────▼─────────────────│─────────────────│────────────│─────────┐
+│                    ML PIPELINE LAYER        │            │         │
+│                                             │            │         │
 │  ┌──────────────────────────────────────┐   │            │         │
 │  │            Receipt Image             │   │            │         │
 │  │                  │                   │   │            │         │
@@ -76,24 +77,24 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 └─────────────────────│───────────────────────│────────────│─────────┘
                       │                       │            │
 ┌─────────────────────▼───────────────────────▼────────────▼─────────┐
-│                       DATA LAYER                                    │
-│                                                                     │
-│                     PostgreSQL (via SQLAlchemy)                     │
-│                                                                     │
+│                       DATA LAYER                                   │
+│                                                                    │
+│                     PostgreSQL (via SQLAlchemy)                    │
+│                                                                    │
 │   ┌──────────┐  ┌──────────────────┐  ┌────────────────────────┐   │
 │   │  users   │  │ inventory_items  │  │  shelf_life_reference  │   │
 │   └──────────┘  └──────────────────┘  └────────────────────────┘   │
 │   ┌──────────┐  ┌──────────────────┐                               │
 │   │  alerts  │  │  waste_log       │                               │
 │   └──────────┘  └──────────────────┘                               │
-└─────────────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────────┘
                                 │
                ┌────────────────▼────────────────┐
-               │        External Services         │
-               │                                  │
-               │  Spoonacular API (recipes)        │
-               │  SMTP / Push (notifications)      │
-               └──────────────────────────────────┘
+               │        External Services        │
+               │                                 │
+               │  Spoonacular API (recipes)      │
+               │  SMTP / Push (notifications)    │
+               └─────────────────────────────────┘
 ```
 
 ---
@@ -102,32 +103,32 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 
 ### 3.1 Frontend (React + TypeScript)
 
-| Module | Responsibility |
-|---|---|
-| `ReceiptUpload` | Handles file selection, preview, upload POST, and item confirmation modal |
-| `FridgeView` | Renders inventory grid with category grouping, expiry color-coding, sort/filter controls |
-| `ItemCard` | Individual item display: name, qty, expiry bar, CRUD actions, "Cook with this" button |
-| `AlertPanel` | Displays active expiry alerts, links to recipe view |
-| `RecipeModal` | Shows fetched recipes for at-risk ingredients; "Mark as Cooked" action |
-| `WasteTracker` | Visualizes CONSUMED vs WASTED ratios over time (Recharts) |
-| `AuthContext` | JWT token storage, login/logout, route guards |
+| Module            | Responsibility                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| `ReceiptUpload` | Handles file selection, preview, upload POST, and item confirmation modal                |
+| `FridgeView`    | Renders inventory grid with category grouping, expiry color-coding, sort/filter controls |
+| `ItemCard`      | Individual item display: name, qty, expiry bar, CRUD actions, "Cook with this" button    |
+| `AlertPanel`    | Displays active expiry alerts, links to recipe view                                      |
+| `RecipeModal`   | Shows fetched recipes for at-risk ingredients; "Mark as Cooked" action                   |
+| `WasteTracker`  | Visualizes CONSUMED vs WASTED ratios over time (Recharts)                                |
+| `AuthContext`   | JWT token storage, login/logout, route guards                                            |
 
 **State Management:** React Query for server state, Zustand for local UI state.
 
 ### 3.2 Backend (FastAPI)
 
-| Module | Responsibility |
-|---|---|
-| `routers/receipts.py` | Receipt upload endpoint; orchestrates ML pipeline call |
-| `routers/inventory.py` | Full CRUD for inventory items |
-| `routers/recipes.py` | Proxies Spoonacular API with caching layer |
-| `routers/alerts.py` | Alert fetch, creation, and dismissal |
-| `routers/auth.py` | JWT-based authentication |
-| `services/ml_service.py` | Loads models, runs OCR → NER → Normalization → Expiry pipeline |
-| `services/scheduler.py` | APScheduler daily job: scans expiry, creates alerts |
-| `services/spoonacular.py` | Spoonacular API client with Redis/in-memory cache |
-| `models/` | SQLAlchemy ORM models |
-| `schemas/` | Pydantic request/response schemas |
+| Module                      | Responsibility                                                    |
+| --------------------------- | ----------------------------------------------------------------- |
+| `routers/receipts.py`     | Receipt upload endpoint; orchestrates ML pipeline call            |
+| `routers/inventory.py`    | Full CRUD for inventory items                                     |
+| `routers/recipes.py`      | Proxies Spoonacular API with caching layer                        |
+| `routers/alerts.py`       | Alert fetch, creation, and dismissal                              |
+| `routers/auth.py`         | JWT-based authentication                                          |
+| `services/ml_service.py`  | Loads models, runs OCR → NER → Normalization → Expiry pipeline |
+| `services/scheduler.py`   | APScheduler daily job: scans expiry, creates alerts               |
+| `services/spoonacular.py` | Spoonacular API client with Redis/in-memory cache                 |
+| `models/`                 | SQLAlchemy ORM models                                             |
+| `schemas/`                | Pydantic request/response schemas                                 |
 
 ### 3.3 ML Pipeline
 
@@ -155,6 +156,7 @@ Structured Output → API Response
 ### 3.4 Database (PostgreSQL)
 
 Detailed in `DB_Schema.md`. Five core tables:
+
 - `users` — authentication and profile
 - `inventory_items` — live inventory with expiry metadata
 - `shelf_life_reference` — canonical shelf-life lookup per food category
@@ -251,10 +253,10 @@ PATCH /api/inventory/bulk-consume
 ┌──────────────────────────────────────────────────────────┐
 │                        Render / Railway                  │
 │                                                          │
-│   ┌─────────────────────┐   ┌──────────────────────┐    │
-│   │  FastAPI + ML Models │   │  PostgreSQL (managed) │    │
-│   │  (Docker container)  │   │                      │    │
-│   └─────────────────────┘   └──────────────────────┘    │
+│   ┌─────────────────────┐   ┌──────────────────────┐     │
+│   │  FastAPI + ML Models│   │  PostgreSQL (managed)│     │
+│   │  (Docker container) │   │                      │     │
+│   └─────────────────────┘   └──────────────────────┘     │
 └──────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────┐
@@ -269,11 +271,11 @@ PATCH /api/inventory/bulk-consume
 
 ## 8. Key Technical Decisions
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| ML framework | PyTorch + HuggingFace Transformers | Best ecosystem for TrOCR + DistilBERT fine-tuning |
-| API framework | FastAPI | Native async, Pydantic validation, Python for ML co-location |
-| Frontend state | React Query + Zustand | Server state and UI state separated cleanly |
-| DB ORM | SQLAlchemy 2.0 | Type-safe, async-compatible |
-| Model serialization | ONNX | Faster CPU inference for deployment without GPU |
-| Receipt image storage | Temp only (deleted post-processing) | Privacy; no long-term image retention |
+| Decision              | Choice                              | Rationale                                                    |
+| --------------------- | ----------------------------------- | ------------------------------------------------------------ |
+| ML framework          | PyTorch + HuggingFace Transformers  | Best ecosystem for TrOCR + DistilBERT fine-tuning            |
+| API framework         | FastAPI                             | Native async, Pydantic validation, Python for ML co-location |
+| Frontend state        | React Query + Zustand               | Server state and UI state separated cleanly                  |
+| DB ORM                | SQLAlchemy 2.0                      | Type-safe, async-compatible                                  |
+| Model serialization   | ONNX                                | Faster CPU inference for deployment without GPU              |
+| Receipt image storage | Temp only (deleted post-processing) | Privacy; no long-term image retention                        |

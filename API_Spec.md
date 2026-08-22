@@ -1,8 +1,9 @@
 # API_Spec.md — API Specification
+
 ## Smart-Stock REST API
 
-**Version:** 1.0  
-**Base URL:** `https://api.smart-stock.app/api/v1`  
+**Version:** 1.0
+**Base URL:** `https://api.smart-stock.app/api/v1`
 **Auth:** JWT Bearer Token (all endpoints except `/auth/*`)
 
 ---
@@ -10,6 +11,7 @@
 ## Authentication
 
 All protected endpoints require the header:
+
 ```
 Authorization: Bearer <access_token>
 ```
@@ -21,23 +23,26 @@ Tokens are obtained via `/auth/login`. Access tokens expire in 30 minutes. Use `
 ## 1. Auth Endpoints
 
 ### POST `/auth/register`
+
 Register a new user.
 
 **Request Body:**
+
 ```json
 {
   "email": "user@example.com",
   "password": "securepassword123",
-  "name": "Maaz Khan"
+  "name": "Maaz Ahmad"
 }
 ```
 
 **Response `201`:**
+
 ```json
 {
   "id": "uuid",
   "email": "user@example.com",
-  "name": "Maaz Khan",
+  "name": "Maaz Ahmad",
   "created_at": "2025-01-01T10:00:00Z"
 }
 ```
@@ -47,9 +52,11 @@ Register a new user.
 ---
 
 ### POST `/auth/login`
+
 Authenticate and receive access token.
 
 **Request Body:**
+
 ```json
 {
   "email": "user@example.com",
@@ -58,6 +65,7 @@ Authenticate and receive access token.
 ```
 
 **Response `200`:**
+
 ```json
 {
   "access_token": "eyJ...",
@@ -65,6 +73,7 @@ Authenticate and receive access token.
   "expires_in": 1800
 }
 ```
+
 Sets `refresh_token` as HttpOnly cookie.
 
 **Errors:** `401` Invalid credentials
@@ -72,11 +81,13 @@ Sets `refresh_token` as HttpOnly cookie.
 ---
 
 ### POST `/auth/refresh`
+
 Refresh access token using cookie.
 
 **Request:** No body. Requires `refresh_token` HttpOnly cookie.
 
 **Response `200`:**
+
 ```json
 {
   "access_token": "eyJ...",
@@ -90,6 +101,7 @@ Refresh access token using cookie.
 ---
 
 ### POST `/auth/logout`
+
 Invalidate refresh token.
 
 **Response `204`:** No content. Clears refresh cookie.
@@ -99,18 +111,21 @@ Invalidate refresh token.
 ## 2. Receipt Endpoints
 
 ### POST `/receipts/upload`
+
 Upload a receipt image and run the ML pipeline.
 
-**Auth:** Required  
+**Auth:** Required
 **Content-Type:** `multipart/form-data`
 
 **Request Form Fields:**
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `file` | `File` | Yes | JPEG/PNG/PDF receipt image (max 10MB) |
-| `storage_context` | `string` | No | Default storage: `fridge`, `freezer`, `pantry` (default: `fridge`) |
+
+| Field               | Type       | Required | Description                                                               |
+| ------------------- | ---------- | -------- | ------------------------------------------------------------------------- |
+| `file`            | `File`   | Yes      | JPEG/PNG/PDF receipt image (max 10MB)                                     |
+| `storage_context` | `string` | No       | Default storage:`fridge`, `freezer`, `pantry` (default: `fridge`) |
 
 **Response `200`:**
+
 ```json
 {
   "receipt_id": "uuid",
@@ -148,11 +163,13 @@ Upload a receipt image and run the ML pipeline.
 ---
 
 ### POST `/receipts/confirm`
+
 Confirm extracted items and save to inventory.
 
 **Auth:** Required
 
 **Request Body:**
+
 ```json
 {
   "receipt_id": "uuid",
@@ -168,9 +185,11 @@ Confirm extracted items and save to inventory.
   ]
 }
 ```
+
 *User may edit `canonical_name`, `quantity`, `predicted_expiry_date` before confirming.*
 
 **Response `201`:**
+
 ```json
 {
   "created_items": 2,
@@ -185,21 +204,24 @@ Confirm extracted items and save to inventory.
 ## 3. Inventory Endpoints
 
 ### GET `/inventory`
+
 List all inventory items for the authenticated user.
 
 **Auth:** Required
 
 **Query Parameters:**
-| Param | Type | Description |
-|---|---|---|
-| `category` | `string` | Filter by category: `Produce`, `Dairy`, `Meat`, `Pantry`, `Frozen` |
-| `status` | `string` | Filter by status: `ACTIVE`, `CONSUMED`, `WASTED` (default: `ACTIVE`) |
-| `sort_by` | `string` | `expiry_date`, `name`, `category` (default: `expiry_date`) |
-| `order` | `string` | `asc`, `desc` (default: `asc`) |
-| `page` | `int` | Page number (default: 1) |
-| `limit` | `int` | Items per page (default: 20, max: 100) |
+
+| Param        | Type       | Description                                                                 |
+| ------------ | ---------- | --------------------------------------------------------------------------- |
+| `category` | `string` | Filter by category:`Produce`, `Dairy`, `Meat`, `Pantry`, `Frozen` |
+| `status`   | `string` | Filter by status:`ACTIVE`, `CONSUMED`, `WASTED` (default: `ACTIVE`) |
+| `sort_by`  | `string` | `expiry_date`, `name`, `category` (default: `expiry_date`)          |
+| `order`    | `string` | `asc`, `desc` (default: `asc`)                                        |
+| `page`     | `int`    | Page number (default: 1)                                                    |
+| `limit`    | `int`    | Items per page (default: 20, max: 100)                                      |
 
 **Response `200`:**
+
 ```json
 {
   "items": [
@@ -229,11 +251,13 @@ List all inventory items for the authenticated user.
 ---
 
 ### POST `/inventory`
+
 Manually add a single inventory item.
 
 **Auth:** Required
 
 **Request Body:**
+
 ```json
 {
   "canonical_name": "Greek Yogurt",
@@ -247,6 +271,7 @@ Manually add a single inventory item.
 ```
 
 **Response `201`:**
+
 ```json
 {
   "id": "uuid",
@@ -267,6 +292,7 @@ Manually add a single inventory item.
 ---
 
 ### GET `/inventory/{item_id}`
+
 Get a single inventory item.
 
 **Auth:** Required
@@ -278,11 +304,13 @@ Get a single inventory item.
 ---
 
 ### PATCH `/inventory/{item_id}`
+
 Update an inventory item.
 
 **Auth:** Required
 
 **Request Body (partial update, all fields optional):**
+
 ```json
 {
   "canonical_name": "Strawberries",
@@ -300,6 +328,7 @@ Update an inventory item.
 ---
 
 ### DELETE `/inventory/{item_id}`
+
 Delete an inventory item (hard delete).
 
 **Auth:** Required
@@ -311,11 +340,13 @@ Delete an inventory item (hard delete).
 ---
 
 ### POST `/inventory/bulk-consume`
+
 Mark multiple items as consumed (after cooking).
 
 **Auth:** Required
 
 **Request Body:**
+
 ```json
 {
   "item_ids": ["uuid1", "uuid2"],
@@ -325,6 +356,7 @@ Mark multiple items as consumed (after cooking).
 ```
 
 **Response `200`:**
+
 ```json
 {
   "consumed_count": 2,
@@ -337,16 +369,19 @@ Mark multiple items as consumed (after cooking).
 ## 4. Alerts Endpoints
 
 ### GET `/alerts`
+
 Get all active alerts for the authenticated user.
 
 **Auth:** Required
 
 **Query Parameters:**
-| Param | Type | Description |
-|---|---|---|
+
+| Param      | Type       | Description                                     |
+| ---------- | ---------- | ----------------------------------------------- |
 | `status` | `string` | `ACTIVE`, `DISMISSED` (default: `ACTIVE`) |
 
 **Response `200`:**
+
 ```json
 {
   "alerts": [
@@ -371,11 +406,13 @@ Get all active alerts for the authenticated user.
 ---
 
 ### PATCH `/alerts/{alert_id}/dismiss`
+
 Dismiss an alert.
 
 **Auth:** Required
 
 **Response `200`:**
+
 ```json
 {
   "id": "uuid",
@@ -391,17 +428,20 @@ Dismiss an alert.
 ## 5. Recipes Endpoints
 
 ### GET `/recipes`
+
 Fetch recipe suggestions for a list of ingredients.
 
 **Auth:** Required
 
 **Query Parameters:**
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `ingredients` | `string` | Yes | Comma-separated ingredient names: `strawberries,milk,eggs` |
-| `limit` | `int` | No | Max recipes to return (default: 5, max: 10) |
+
+| Param           | Type       | Required | Description                                                 |
+| --------------- | ---------- | -------- | ----------------------------------------------------------- |
+| `ingredients` | `string` | Yes      | Comma-separated ingredient names:`strawberries,milk,eggs` |
+| `limit`       | `int`    | No       | Max recipes to return (default: 5, max: 10)                 |
 
 **Response `200`:**
+
 ```json
 {
   "recipes": [
@@ -430,18 +470,21 @@ Fetch recipe suggestions for a list of ingredients.
 ## 6. Waste Log Endpoints
 
 ### GET `/waste-log`
+
 Get waste log entries for the authenticated user.
 
 **Auth:** Required
 
 **Query Parameters:**
-| Param | Type | Description |
-|---|---|---|
-| `outcome` | `string` | `CONSUMED`, `WASTED` |
-| `from_date` | `date` | Start date filter (ISO 8601) |
-| `to_date` | `date` | End date filter (ISO 8601) |
+
+| Param         | Type       | Description                  |
+| ------------- | ---------- | ---------------------------- |
+| `outcome`   | `string` | `CONSUMED`, `WASTED`     |
+| `from_date` | `date`   | Start date filter (ISO 8601) |
+| `to_date`   | `date`   | End date filter (ISO 8601)   |
 
 **Response `200`:**
+
 ```json
 {
   "summary": {
@@ -479,27 +522,29 @@ All errors follow a consistent shape:
 ```
 
 **Standard Error Codes:**
-| Code | HTTP Status | Meaning |
-|---|---|---|
-| `VALIDATION_ERROR` | 422 | Request body failed Pydantic validation |
-| `UNAUTHORIZED` | 401 | Missing or invalid token |
-| `FORBIDDEN` | 403 | Resource not owned by requesting user |
-| `NOT_FOUND` | 404 | Resource does not exist |
-| `OCR_FAILURE` | 422 | ML pipeline could not extract text |
-| `UPSTREAM_ERROR` | 503 | External API (Spoonacular) unavailable |
-| `RATE_LIMITED` | 429 | Too many requests |
+
+| Code                 | HTTP Status | Meaning                                 |
+| -------------------- | ----------- | --------------------------------------- |
+| `VALIDATION_ERROR` | 422         | Request body failed Pydantic validation |
+| `UNAUTHORIZED`     | 401         | Missing or invalid token                |
+| `FORBIDDEN`        | 403         | Resource not owned by requesting user   |
+| `NOT_FOUND`        | 404         | Resource does not exist                 |
+| `OCR_FAILURE`      | 422         | ML pipeline could not extract text      |
+| `UPSTREAM_ERROR`   | 503         | External API (Spoonacular) unavailable  |
+| `RATE_LIMITED`     | 429         | Too many requests                       |
 
 ---
 
 ## 8. Rate Limiting
 
-| Endpoint | Limit |
-|---|---|
-| `POST /receipts/upload` | 10 requests / hour / user |
-| `GET /recipes` | 50 requests / hour / user |
-| All other endpoints | 200 requests / hour / user |
+| Endpoint                  | Limit                      |
+| ------------------------- | -------------------------- |
+| `POST /receipts/upload` | 10 requests / hour / user  |
+| `GET /recipes`          | 50 requests / hour / user  |
+| All other endpoints       | 200 requests / hour / user |
 
 Rate limit headers returned on all responses:
+
 ```
 X-RateLimit-Limit: 200
 X-RateLimit-Remaining: 147

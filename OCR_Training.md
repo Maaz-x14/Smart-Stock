@@ -1,8 +1,10 @@
+
 # OCR_Training.md — Model Training Guide
+
 ## SmartStock: TrOCR Fine-Tuning
 
-**Version:** 14.0 — Complete notebook reference, every code block included  
-**Training Environment:** Kaggle (2× T4 GPU, 30 hr/week quota — single GPU enforced)  
+**Version:** 14.0 — Complete notebook reference, every code block included
+**Training Environment:** Kaggle (2× T4 GPU, 30 hr/week quota — single GPU enforced)
 **Last Updated:** Post v3 dataset integration (CORD + SROIE + WildReceipt)
 
 ---
@@ -15,11 +17,11 @@ Receipt Image → TrOCR (Stage 1) → NER (Stage 2) → Normalization → Expiry
 
 This document covers **Stage 1: TrOCR fine-tuning only.**
 
-**Base model:** `microsoft/trocr-base-printed`  
-**Adapter:** LoRA on decoder only (encoder frozen)  
-**Trainable params:** 1,523,712 of 335M total (0.45%)  
-**Target:** CER ≤ 0.05 | WER ≤ 0.10  
-**Current best saved model:** `trocr-smart-stock-best` on Kaggle — CER ~0.0856  
+**Base model:** `microsoft/trocr-base-printed`
+**Adapter:** LoRA on decoder only (encoder frozen)
+**Trainable params:** 1,523,712 of 335M total (0.45%)
+**Target:** CER ≤ 0.05 | WER ≤ 0.10
+**Current best saved model:** `trocr-smart-stock-best` on Kaggle — CER ~0.0856
 **Rule:** Do NOT overwrite `trocr-smart-stock-best` unless new run beats 0.0856
 
 ---
@@ -40,16 +42,16 @@ TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 
 
 ## 12-Hour Session Budget (Kaggle T4, Single GPU)
 
-| Phase | Time |
-|-------|------|
-| pip installs | ~3 min |
-| Dataset load from disk (v3 saved, no rebuild) | ~2 min |
-| Model setup | ~2 min |
-| 8 epochs × 8,558 steps × ~0.55s (fp16, LoRA, frozen enc) | ~10.5 hr |
-| Val eval × 8 epochs (3,193 samples) | ~16 min |
-| Save & Export | ~5 min |
-| Test eval — manual loop, 9,301 samples, beam=4 | ~60 min |
-| **Total** | **~12.0 hr** ⚠️ tight |
+| Phase                                                      | Time                          |
+| ---------------------------------------------------------- | ----------------------------- |
+| pip installs                                               | ~3 min                        |
+| Dataset load from disk (v3 saved, no rebuild)              | ~2 min                        |
+| Model setup                                                | ~2 min                        |
+| 8 epochs × 8,558 steps × ~0.55s (fp16, LoRA, frozen enc) | ~10.5 hr                      |
+| Val eval × 8 epochs (3,193 samples)                       | ~16 min                       |
+| Save & Export                                              | ~5 min                        |
+| Test eval — manual loop, 9,301 samples, beam=4            | ~60 min                       |
+| **Total**                                            | **~12.0 hr** ⚠️ tight |
 
 > **Next run resumes from checkpoint — dataset already on disk.** No rebuild cost. 8 epochs on 68k examples = ~10.5 hr training + ~60 min test eval = ~11.5 hr. Monitor epoch 1 — if it takes > 85 min, reduce to 7 epochs.
 >
@@ -61,31 +63,32 @@ TrOCR was pretrained on single-line text images. Feeding full receipts (20–50 
 
 ## Dataset v3 — Composition
 
-| Source | Train | Val | Test | Notes |
-|--------|-------|-----|------|-------|
-| CORD | 2,105 | 221 | 251 | Indonesian restaurant receipts, line-level by group_id |
-| SROIE | 14,476 | — | 8,050 | English retail receipts, **2× weighted in train**, line-level by Y-proximity |
-| WildReceipt (train.txt → 90%) | 26,741 | — | — | Per-annotation crops |
-| WildReceipt (train.txt → 10%) | — | 2,972 | — | Val split from train.txt crops |
-| WildReceipt (test.txt, capped) | 10,665→train | — | 1,000 | Excess test crops moved to train |
-| **Total v3** | **68,463** | **3,193** | **9,301** | |
+| Source                         | Train            | Val             | Test            | Notes                                                                              |
+| ------------------------------ | ---------------- | --------------- | --------------- | ---------------------------------------------------------------------------------- |
+| CORD                           | 2,105            | 221             | 251             | Indonesian restaurant receipts, line-level by group_id                             |
+| SROIE                          | 14,476           | —              | 8,050           | English retail receipts,**2× weighted in train**, line-level by Y-proximity |
+| WildReceipt (train.txt → 90%) | 26,741           | —              | —              | Per-annotation crops                                                               |
+| WildReceipt (train.txt → 10%) | —               | 2,972           | —              | Val split from train.txt crops                                                     |
+| WildReceipt (test.txt, capped) | 10,665→train    | —              | 1,000           | Excess test crops moved to train                                                   |
+| **Total v3**             | **68,463** | **3,193** | **9,301** |                                                                                    |
 
-**WildReceipt labels excluded:** 0 (empty/illegible), 25 (catch-all: terminal IDs, legal text, thank-you messages)  
-**WildReceipt cropping strategy:** per-annotation (not line grouping) — eliminates two-column merging bug  
-**Why per-annotation for WildReceipt only:** CORD groups by group_id (logical receipt lines, working well). SROIE uses Y-proximity (words well-spaced, no column issues). WildReceipt had two-column layouts causing Y-grouping to merge item names + prices into nonsense crops — corrupted ~33% of training data, caused CER regression 0.088 → 0.339  
+**WildReceipt labels excluded:** 0 (empty/illegible), 25 (catch-all: terminal IDs, legal text, thank-you messages)
+**WildReceipt cropping strategy:** per-annotation (not line grouping) — eliminates two-column merging bug
+**Why per-annotation for WildReceipt only:** CORD groups by group_id (logical receipt lines, working well). SROIE uses Y-proximity (words well-spaced, no column issues). WildReceipt had two-column layouts causing Y-grouping to merge item names + prices into nonsense crops — corrupted ~33% of training data, caused CER regression 0.088 → 0.339
 **Test capped at 1,000 WildReceipt crops** — prevents beam search hanging for hours (previous session lost 6+ hrs to this)
 
 ---
 
 ## Kaggle Dataset Inputs (Current Session)
 
-| Kaggle slug | Purpose | Update frequency |
-|-------------|---------|-----------------|
-| `smart-stock-dataset-v3` | Combined CORD+SROIE+WildReceipt dataset | Never — only if new data source added |
-| `trocr-smart-stock-model` | Current best model weights + resume checkpoint | After every training run |
-| `wild-receipt` | Raw WildReceipt images + annotations | Never |
+| Kaggle slug                 | Purpose                                        | Update frequency                       |
+| --------------------------- | ---------------------------------------------- | -------------------------------------- |
+| `smart-stock-dataset-v3`  | Combined CORD+SROIE+WildReceipt dataset        | Never — only if new data source added |
+| `trocr-smart-stock-model` | Current best model weights + resume checkpoint | After every training run               |
+| `wild-receipt`            | Raw WildReceipt images + annotations           | Never                                  |
 
 **`smart-stock-dataset-v3` structure:**
+
 ```
 smart_stock_dataset_v3/
 ├── train/
@@ -93,19 +96,24 @@ smart_stock_dataset_v3/
 ├── test/
 └── dataset_dict.json
 ```
+
 Path: `/kaggle/input/datasets/maazahmad69/smart-stock-dataset-v3/smart_stock_dataset_v3`
 
 **`trocr-smart-stock-model` structure:**
+
 ```
 trocr-smart-stock-best/     ← current best merged model (CER 0.0687)
 trocr-smart-stock/
 └── checkpoint-51348/       ← only the best checkpoint, delete rest after each run
 ```
+
 Paths:
+
 - Model: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best/trocr-smart-stock-best`
 - Checkpoint: `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock/trocr-smart-stock/checkpoint-51348`
 
 **`wild-receipt` structure:**
+
 ```
 wildreceipt/
 ├── image_files/
@@ -114,9 +122,11 @@ wildreceipt/
 ├── class_list.txt
 └── dict.txt
 ```
+
 Path: `/kaggle/input/datasets/maazahmad69/wild-receipt/wildreceipt`
 
 **Best practice — what to re-upload after each run:**
+
 - `trocr-smart-stock-model` → new version: updated `trocr-smart-stock-best/` + latest single checkpoint only
 - `smart-stock-dataset-v3` → never touched unless a new data source is added
 - `wild-receipt` → never touched
@@ -300,10 +310,10 @@ def extract_sroie_crops(image: Image.Image, words: list, bboxes: list) -> list:
 
 ### Cell 4 — WildReceipt Extractor
 
-> Skip running — output already in `smart_stock_dataset_v3`. Defines `extract_wildreceipt_crops()`.  
+> Skip running — output already in `smart_stock_dataset_v3`. Defines `extract_wildreceipt_crops()`.
 > This is a **new standalone cell** added for v3. Insert between SROIE extractor and Dataset Builder.
 
-**Why per-annotation crops (not line grouping):**  
+**Why per-annotation crops (not line grouping):**
 WildReceipt receipts have two-column layouts — item names on the left, prices on the right — with nearly identical Y coordinates per row. Y-proximity grouping merged left-column and right-column annotations into nonsense crops (e.g. `"*BtDietCoke £136.50 65.000@£2.10"` as one crop). This corrupted ~33% of training data and caused CER to regress from 0.088 → 0.339. Per-annotation cropping eliminates this entirely — each annotation becomes its own crop, no column detection needed. Also produces more training examples (29,713 vs 12,667 train crops from same images).
 
 ```python
@@ -391,7 +401,7 @@ def extract_wildreceipt_crops(annotation_file: Path) -> list:
 
 ### Cell 5 — Dataset Builder
 
-> **First run:** downloads CORD + SROIE from HuggingFace, reads all WildReceipt images, builds crops, saves to `/kaggle/working/smart_stock_dataset_v3`. Takes ~35 min. Download this folder and upload as Kaggle dataset `smart-stock-dataset-v3`.  
+> **First run:** downloads CORD + SROIE from HuggingFace, reads all WildReceipt images, builds crops, saves to `/kaggle/working/smart_stock_dataset_v3`. Takes ~35 min. Download this folder and upload as Kaggle dataset `smart-stock-dataset-v3`.
 > **Subsequent runs:** `DATASET_SAVE.exists()` is True → loads instantly from disk, skips all building.
 
 ```python
@@ -869,9 +879,9 @@ def compute_metrics(pred):
 
 ### Cell 12 — Optuna Hyperparameter Search (COMMENTED OUT)
 
-> **Why commented:** Current LR (1.4824e-4) was tuned by Optuna on a prior subset run. Running Optuna again costs ~3–4 hours of the 12-hour session before any real training starts.  
+> **Why commented:** Current LR (1.4824e-4) was tuned by Optuna on a prior subset run. Running Optuna again costs ~3–4 hours of the 12-hour session before any real training starts.
 >
-> **When to uncomment:** After a stable epoch 1 completes on v3 data and CER confirms ~0.088–0.092. If the LR feels off on the new dataset distribution, run Optuna in a separate dedicated session.  
+> **When to uncomment:** After a stable epoch 1 completes on v3 data and CER confirms ~0.088–0.092. If the LR feels off on the new dataset distribution, run Optuna in a separate dedicated session.
 >
 > **Config notes:** `n_trials=4` (not 10) — 4 trials × 1 epoch on 1/8 of 46,500 = ~5,800 examples per trial ≈ 45 min per trial ≈ 3 hr total. Fits in a dedicated session. `predict_with_generate=True` kept (unlike old v12 config) — we need CER not just loss to rank trials meaningfully.
 
@@ -1121,7 +1131,7 @@ for fname in expected_files:
     print(f"  {'✅' if exists else '❌'} {fname} ({size:.1f} MB)")
 ```
 
-> Expected total size: ~1.3 GB (`model.safetensors` ~1.28 GB, rest are small config files).  
+> Expected total size: ~1.3 GB (`model.safetensors` ~1.28 GB, rest are small config files).
 > After session completes: go to notebook Output tab → three dots next to `trocr-smart-stock-best/` → Create Dataset → upload as `trocr-smart-stock-best`.
 
 ---
@@ -1225,20 +1235,20 @@ image
 
 ## Training History
 
-| Run | Setup | Best Val CER | Best Val WER | Notes |
-|-----|-------|-------------|-------------|-------|
-| Full finetune | All 333M params | 0.1758 | — | Plateau, optimizer instability |
-| LoRA first (Colab) | Frozen enc + LoRA dec | 0.0894 | — | 1 epoch only |
-| Optuna search | 1 epoch, 1/8 data, batch 4 | 0.0803–0.0886 | — | Best: lr=1.4824e-4, warmup=0.02672 |
-| Kaggle run 1 | 5 epochs, DataParallel batch 16 | 0.1325 | — | DataParallel doubled batch silently |
-| Kaggle run 2 | 8 epochs, attempted single GPU | 0.1332 | — | DataParallel still fired — env var after torch import |
-| v3 run 1 | 6 epochs, v3 46.5K train, WR line-grouped | 0.3396 | 0.5942 | WildReceipt column merging bug corrupted 33% of data |
-| **v3 run 2** | 6 epochs, v3 68.5K train, WR per-annotation | **0.0771** | **0.2383** | `load_best_model_at_end=False` saved epoch 6 not epoch 4 |
-| **v3 run 3** | 8 epochs, resumed from checkpoint-51348, `load_best_model_at_end=True` | **0.0687** | **0.2159** | Epoch 6. Test CER 1.47 traced to a `no_repeat_ngram_size` misdiagnosis at the time — real cause found in run 4 (see below). |
-| **v3 run 4** | 8 epochs, resumed from checkpoint-51348 with fresh optimizer state (Bug 5, then undiagnosed) | 0.0695 | 0.2167 | Epoch 7, checkpoint-59906. Flat vs. run 3 — later understood to be caused by Bug 5 (LR schedule restarting each session). Reported Test CER 1.4052 — later found to be Bug 6 (test eval running on stale `model` instead of `merged_model`), not a real regression. |
+| Run                | Setup                                                                                        | Best Val CER     | Best Val WER     | Notes                                                                                                                                                                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------- | ---------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Full finetune      | All 333M params                                                                              | 0.1758           | —               | Plateau, optimizer instability                                                                                                                                                                                                                                           |
+| LoRA first (Colab) | Frozen enc + LoRA dec                                                                        | 0.0894           | —               | 1 epoch only                                                                                                                                                                                                                                                             |
+| Optuna search      | 1 epoch, 1/8 data, batch 4                                                                   | 0.0803–0.0886   | —               | Best: lr=1.4824e-4, warmup=0.02672                                                                                                                                                                                                                                       |
+| Kaggle run 1       | 5 epochs, DataParallel batch 16                                                              | 0.1325           | —               | DataParallel doubled batch silently                                                                                                                                                                                                                                      |
+| Kaggle run 2       | 8 epochs, attempted single GPU                                                               | 0.1332           | —               | DataParallel still fired — env var after torch import                                                                                                                                                                                                                   |
+| v3 run 1           | 6 epochs, v3 46.5K train, WR line-grouped                                                    | 0.3396           | 0.5942           | WildReceipt column merging bug corrupted 33% of data                                                                                                                                                                                                                     |
+| **v3 run 2** | 6 epochs, v3 68.5K train, WR per-annotation                                                  | **0.0771** | **0.2383** | `load_best_model_at_end=False` saved epoch 6 not epoch 4                                                                                                                                                                                                               |
+| **v3 run 3** | 8 epochs, resumed from checkpoint-51348,`load_best_model_at_end=True`                      | **0.0687** | **0.2159** | Epoch 6. Test CER 1.47 traced to a`no_repeat_ngram_size` misdiagnosis at the time — real cause found in run 4 (see below).                                                                                                                                            |
+| **v3 run 4** | 8 epochs, resumed from checkpoint-51348 with fresh optimizer state (Bug 5, then undiagnosed) | 0.0695           | 0.2167           | Epoch 7, checkpoint-59906. Flat vs. run 3 — later understood to be caused by Bug 5 (LR schedule restarting each session). Reported Test CER 1.4052 — later found to be Bug 6 (test eval running on stale`model` instead of `merged_model`), not a real regression. |
 
-**Stored best:** `trocr-smart-stock-best` in `trocr-smart-stock-model` — CER 0.0687, WER 0.2159 (v3 run 3, epoch 6). Run 4's 0.0695 did not beat this, so the stored best model is still from run 3 pending a clean re-run with Bug 5 and Bug 6 both fixed.  
-**Path:** `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best/trocr-smart-stock-best`  
+**Stored best:** `trocr-smart-stock-best` in `trocr-smart-stock-model` — CER 0.0687, WER 0.2159 (v3 run 3, epoch 6). Run 4's 0.0695 did not beat this, so the stored best model is still from run 3 pending a clean re-run with Bug 5 and Bug 6 both fixed.
+**Path:** `/kaggle/input/datasets/maazahmad69/trocr-smart-stock-model/trocr-smart-stock-best/trocr-smart-stock-best`
 **Convention:** Always overwrite `trocr-smart-stock-best/` with the new best model after each run. No versioned names — the Kaggle dataset version number tracks history.
 
 **Key observation:** CER/WER gap (~3×) is expected for receipt OCR — one wrong character fails entire words like `"BCCHOCCUPCAKES"`. WER improves naturally as CER improves, not a separate problem.
@@ -1250,16 +1260,19 @@ image
 ## Bugs Fixed
 
 ### Bug 1 — DataParallel not disabled ✅ FIXED
+
 `os.environ["CUDA_VISIBLE_DEVICES"] = "0"` was placed after PyTorch imports → Kaggle's 2×T4 silently ran DataParallel → effective batch doubled 8→16 → Optuna LR tuned at batch 4 was mismatched 4× over.
 
 **Fix:** `os.environ["CUDA_VISIBLE_DEVICES"] = "0"` is now the absolute first Python line in Cell 1, before even `from pathlib import Path`.
 
 ### Bug 2 — Test eval hangs on degenerate crops ✅ FIXED
+
 Test set contains 1-pixel-wide image crops (`torch.Size([3, 42, 1])`). Beam search with `num_beams=4` hangs indefinitely on these. Previous session spent 6+ hours in test eval and never finished.
 
 **Fix:** Manual loop in Cell 16 skips any sample with `w < 4 or h < 4`. Never use `trainer.evaluate()` on the test set.
 
 ### Bug 5 — AttributeError: scaler.load_state_dict on Trainer resume ✅ FIXED (was previously only DOCUMENTED)
+
 When resuming from a checkpoint saved with `fp16=True`, the Trainer calls
 `self.accelerator.scaler.load_state_dict()` to restore the gradient scaler.
 In newer versions of transformers/accelerate, the scaler is `None` when fp16
@@ -1285,16 +1298,19 @@ still avoiding the `AttributeError`. Confirmed `checkpoint-51348` contains both
 state to restore.
 
 ### Bug 4 — Test eval skips all samples silently ✅ FIXED
+
 `model.generate(pixel_values)` — passing `pixel_values` as a positional argument to `PeftModelForSeq2SeqLM.generate()` raises `TypeError: takes 1 positional argument but 2 were given`. The `except Exception` block silently swallowed this on every sample, reporting CER 0.0000 and WER 0.0000 with all 9,301 samples skipped. Affected v3 run 2 entirely — true test CER from that run is unknown.
 
 **Fix:** Use keyword argument: `model.generate(pixel_values=pixel_values, max_new_tokens=128)`. Also added `first_error_printed` flag so the first exception surfaces instead of being swallowed.
 
 ### Bug 3 — PEFT checkpoint adapter reset ✅ FIXED
+
 Without `LoRASaveCallback`, PEFT silently restores base model config instead of adapter weights on checkpoint resume. Training effectively restarts from scratch each time.
 
 **Fix:** `LoRASaveCallback` saves `lora_adapter/` subdir alongside every checkpoint. `find_lora_checkpoints()` filters for checkpoints containing this subdir.
 
 ### Bug 6 — Test eval running on stale PeftModel after merge_and_unload() ✅ FIXED
+
 `model.merge_and_unload()` (Cell 15) is destructive: it folds LoRA deltas into the base layers and removes the LoRA modules from the underlying module tree that `model` (the PeftModel wrapper) still references. After this call, `model` is a stale/inconsistent object — only the returned `merged_model` is safe for inference. Cell 16 (test eval) and Cell 17 (qualitative check) were both still calling `model.generate()` after the merge, producing corrupted output (token reordering, digit corruption) despite correct underlying weights. This is the real explanation for the val/test CER gap previously attributed to `no_repeat_ngram_size`.
 
 **Fix:** Cells 16 and 17 now call `merged_model.generate(...)` and use `merged_model.device`, not `model`.
@@ -1305,66 +1321,66 @@ Without `LoRASaveCallback`, PEFT silently restores base model config instead of 
 
 ### Tier 1 — Do next
 
-| Technique | Status | Notes |
-|-----------|--------|-------|
-| Fix `load_best_model_at_end=False` | ✅ Done (v3 run 3) | Now saves true best epoch. |
-| Switch to `num_cycles=1` | ✅ Done (v3 run 3) | Single cosine decay, stable convergence. |
-| Fix generation config | ✅ Done | Removed `no_repeat_ngram_size=3`, set `length_penalty=1.0`. Was causing test CER > 1.0. |
-| Continue training from best checkpoint | ⏳ Next run | Resume from `trocr-smart-stock-v2` checkpoint. Val loss still declining at epoch 6 (0.2828). More epochs will push CER below 0.06. |
-| Partial encoder unfreeze | ⏳ After CER stabilises < 0.065 | Unfreeze top 2 ViT encoder blocks alongside LoRA. Biggest remaining performance lever. Add `gradient_accumulation_steps=2` if OOM. Each step ~0.7s vs 0.55s — reduce to 5–6 epochs when unfreezing. |
-| Re-run Optuna | ⏳ After encoder unfreeze | LR tuned on frozen encoder — gradient flow changes after unfreeze. Dedicated session only, not during main training. |
+| Technique                              | Status                          | Notes                                                                                                                                                                                                  |
+| -------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fix`load_best_model_at_end=False`    | ✅ Done (v3 run 3)              | Now saves true best epoch.                                                                                                                                                                             |
+| Switch to`num_cycles=1`              | ✅ Done (v3 run 3)              | Single cosine decay, stable convergence.                                                                                                                                                               |
+| Fix generation config                  | ✅ Done                         | Removed`no_repeat_ngram_size=3`, set `length_penalty=1.0`. Was causing test CER > 1.0.                                                                                                             |
+| Continue training from best checkpoint | ⏳ Next run                     | Resume from`trocr-smart-stock-v2` checkpoint. Val loss still declining at epoch 6 (0.2828). More epochs will push CER below 0.06.                                                                    |
+| Partial encoder unfreeze               | ⏳ After CER stabilises < 0.065 | Unfreeze top 2 ViT encoder blocks alongside LoRA. Biggest remaining performance lever. Add`gradient_accumulation_steps=2` if OOM. Each step ~0.7s vs 0.55s — reduce to 5–6 epochs when unfreezing. |
+| Re-run Optuna                          | ⏳ After encoder unfreeze       | LR tuned on frozen encoder — gradient flow changes after unfreeze. Dedicated session only, not during main training.                                                                                  |
 
 ### Tier 2 — Medium impact
 
-| Technique | Notes |
-|-----------|-------|
-| Label smoothing (`label_smoothing_factor=0.1`) | Helps with noisy WildReceipt labels. Add to `Seq2SeqTrainingArguments`. |
-| LoRA rank increase (r=16 → r=32) | ~3M extra params. May help with WildReceipt's text diversity. |
+| Technique                                                 | Notes                                                                                            |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Label smoothing (`label_smoothing_factor=0.1`)          | Helps with noisy WildReceipt labels. Add to`Seq2SeqTrainingArguments`.                         |
+| LoRA rank increase (r=16 → r=32)                         | ~3M extra params. May help with WildReceipt's text diversity.                                    |
 | Gradient accumulation (`gradient_accumulation_steps=2`) | Effective batch 16. Use only if OOM after encoder unfreeze. Already in notebook, just uncomment. |
 
 ### Tier 3 — Low effort, test after training
 
-| Technique | Notes |
-|-----------|-------|
-| Beam search tuning (`num_beams` 4 → 6–8) | Inference only, no retraining needed. Change in model setup cell. |
-| WildReceipt train weighting | Currently 1×. Monitor if WildReceipt dominates training signal vs CORD/SROIE. |
+| Technique                                    | Notes                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------------ |
+| Beam search tuning (`num_beams` 4 → 6–8) | Inference only, no retraining needed. Change in model setup cell.              |
+| WildReceipt train weighting                  | Currently 1×. Monitor if WildReceipt dominates training signal vs CORD/SROIE. |
 
 ---
 
 ## Troubleshooting
 
-| Issue | Fix |
-|-------|-----|
-| DataParallel fires despite env var | Must be set before any `import torch` — even in prior cells. Restart kernel and run Cell 1 first. |
-| Test eval hangs for hours | Use manual loop in Cell 16 with `w < 4 or h < 4` skip. Never `trainer.evaluate()` on test. |
-| LoRA adapter resets on resume | `LoRASaveCallback` not attached or removed. Re-add to `callbacks=[LoRASaveCallback()]`. |
-| Stale checkpoints without adapter | Trainer cell removes them: `shutil.rmtree(ckpt)` for checkpoints missing `lora_adapter/`. |
-| Dataset rebuilds every session | `DATASET_SAVE.exists()` check skips rebuild — only triggers if v3 Kaggle dataset not mounted. |
-| OOM on batch 8 | Uncomment `gradient_accumulation_steps=2` in training_args — keep batch 8 as-is. |
-| WildReceipt images not found | Check `WILDRECEIPT_DIR` — only needed during build, not inference or training on saved dataset. |
-| `AttributeError: TrOCRDataset has no .select()` | It's a PyTorch Dataset. Use `combined_dataset["train"].select(...)` then wrap in `TrOCRDataset()`. |
-| `GaussNoise` var_limit warning | Use `A.GaussNoise(p=0.5)` without named args — albumentations API changed. |
-| CORD train: 0 crops extracted | `quad` is in `valid_line[].words[].quad` — NOT in `gt_parse.menu`. |
-| fp16 scaler error on resume | Ensure `fp16=True` in training_args when resuming — checkpoint contains scaler state. |
-| `Missing keys: decoder.output_projection.weight` | Harmless TrOCR architecture warning. Safe to ignore. |
-| `ViTImageProcessor` fast processor warning | Safe to ignore, or pass `use_fast=False` to `TrOCRProcessor.from_pretrained()`. |
-| Outputs lost after session | Quick Save = code only. Use **Save & Run All** to commit `/kaggle/working/` permanently. |
-| `warmup_ratio is deprecated` | Harmless for now, will be removed in transformers v5.2. |
-| CER regresses after adding WildReceipt | Was caused by two-column merging bug in Y-proximity grouping — fixed by switching to per-annotation crops. |
-| `AttributeError: 'NoneType' has no attribute 'load_state_dict'` on resume | Scaler state in checkpoint incompatible with current transformers version. Do NOT set `resume_from = None` (discards optimizer+scheduler too). Instead copy the checkpoint to a writable dir, delete only `scaler.pt`, and resume from the copy. |
-| Test CER > 1.0 (e.g. 1.47, 1.40) | Check whether test eval is calling `model.generate()` after `model.merge_and_unload()` has run — `model` is stale post-merge. Must call `merged_model.generate()`. (Previously misdiagnosed as `no_repeat_ngram_size=3`/`length_penalty` — those settings are still worth keeping as removed/1.0, but were not the actual cause.) |
-| Test CER still elevated after fixing merged_model call | Re-check `length_penalty` (should be 1.0, not 2.0) and confirm `no_repeat_ngram_size` is not set — receipt text has legitimate repetition (e.g. `60.000 60.000`) that ngram blocking incorrectly suppresses. |
-| Model reorders words or hallucinates in test | Generation config issue, not model quality. Val CER (teacher-forced) is the reliable metric during training. Fix generation config before judging test output. |
-| `model.generate(pixel_values)` TypeError | PeftModelForSeq2SeqLM doesn't accept positional args. Use `model.generate(pixel_values=pixel_values, max_new_tokens=128)`. |
-| Test eval reports 0.0000 CER with all samples skipped | Silent exception swallowing. Check `first_error_printed` output — likely the generate() positional arg bug above. |
-| Best epoch not saved — final epoch saved instead | `load_best_model_at_end=False` in training_args. Set to True with `metric_for_best_model="eval_cer"`, `greater_is_better=False`, and `save_strategy="epoch"` matching `eval_strategy`. |
-| CER oscillates between epochs (e.g. 0.092→0.079→0.088) | `num_cycles=2` in cosine_with_restarts causes LR spikes at restart points. Switch to `num_cycles=1` for stable decay. |
+| Issue                                                                       | Fix                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DataParallel fires despite env var                                          | Must be set before any`import torch` — even in prior cells. Restart kernel and run Cell 1 first.                                                                                                                                                                                                                                            |
+| Test eval hangs for hours                                                   | Use manual loop in Cell 16 with`w < 4 or h < 4` skip. Never `trainer.evaluate()` on test.                                                                                                                                                                                                                                                  |
+| LoRA adapter resets on resume                                               | `LoRASaveCallback` not attached or removed. Re-add to `callbacks=[LoRASaveCallback()]`.                                                                                                                                                                                                                                                    |
+| Stale checkpoints without adapter                                           | Trainer cell removes them:`shutil.rmtree(ckpt)` for checkpoints missing `lora_adapter/`.                                                                                                                                                                                                                                                   |
+| Dataset rebuilds every session                                              | `DATASET_SAVE.exists()` check skips rebuild — only triggers if v3 Kaggle dataset not mounted.                                                                                                                                                                                                                                               |
+| OOM on batch 8                                                              | Uncomment`gradient_accumulation_steps=2` in training_args — keep batch 8 as-is.                                                                                                                                                                                                                                                             |
+| WildReceipt images not found                                                | Check`WILDRECEIPT_DIR` — only needed during build, not inference or training on saved dataset.                                                                                                                                                                                                                                              |
+| `AttributeError: TrOCRDataset has no .select()`                           | It's a PyTorch Dataset. Use`combined_dataset["train"].select(...)` then wrap in `TrOCRDataset()`.                                                                                                                                                                                                                                          |
+| `GaussNoise` var_limit warning                                            | Use`A.GaussNoise(p=0.5)` without named args — albumentations API changed.                                                                                                                                                                                                                                                                   |
+| CORD train: 0 crops extracted                                               | `quad` is in `valid_line[].words[].quad` — NOT in `gt_parse.menu`.                                                                                                                                                                                                                                                                      |
+| fp16 scaler error on resume                                                 | Ensure`fp16=True` in training_args when resuming — checkpoint contains scaler state.                                                                                                                                                                                                                                                        |
+| `Missing keys: decoder.output_projection.weight`                          | Harmless TrOCR architecture warning. Safe to ignore.                                                                                                                                                                                                                                                                                           |
+| `ViTImageProcessor` fast processor warning                                | Safe to ignore, or pass`use_fast=False` to `TrOCRProcessor.from_pretrained()`.                                                                                                                                                                                                                                                             |
+| Outputs lost after session                                                  | Quick Save = code only. Use**Save & Run All** to commit `/kaggle/working/` permanently.                                                                                                                                                                                                                                                |
+| `warmup_ratio is deprecated`                                              | Harmless for now, will be removed in transformers v5.2.                                                                                                                                                                                                                                                                                        |
+| CER regresses after adding WildReceipt                                      | Was caused by two-column merging bug in Y-proximity grouping — fixed by switching to per-annotation crops.                                                                                                                                                                                                                                    |
+| `AttributeError: 'NoneType' has no attribute 'load_state_dict'` on resume | Scaler state in checkpoint incompatible with current transformers version. Do NOT set`resume_from = None` (discards optimizer+scheduler too). Instead copy the checkpoint to a writable dir, delete only `scaler.pt`, and resume from the copy.                                                                                            |
+| Test CER > 1.0 (e.g. 1.47, 1.40)                                            | Check whether test eval is calling`model.generate()` after `model.merge_and_unload()` has run — `model` is stale post-merge. Must call `merged_model.generate()`. (Previously misdiagnosed as `no_repeat_ngram_size=3`/`length_penalty` — those settings are still worth keeping as removed/1.0, but were not the actual cause.) |
+| Test CER still elevated after fixing merged_model call                      | Re-check`length_penalty` (should be 1.0, not 2.0) and confirm `no_repeat_ngram_size` is not set — receipt text has legitimate repetition (e.g. `60.000 60.000`) that ngram blocking incorrectly suppresses.                                                                                                                             |
+| Model reorders words or hallucinates in test                                | Generation config issue, not model quality. Val CER (teacher-forced) is the reliable metric during training. Fix generation config before judging test output.                                                                                                                                                                                 |
+| `model.generate(pixel_values)` TypeError                                  | PeftModelForSeq2SeqLM doesn't accept positional args. Use`model.generate(pixel_values=pixel_values, max_new_tokens=128)`.                                                                                                                                                                                                                    |
+| Test eval reports 0.0000 CER with all samples skipped                       | Silent exception swallowing. Check`first_error_printed` output — likely the generate() positional arg bug above.                                                                                                                                                                                                                            |
+| Best epoch not saved — final epoch saved instead                           | `load_best_model_at_end=False` in training_args. Set to True with `metric_for_best_model="eval_cer"`, `greater_is_better=False`, and `save_strategy="epoch"` matching `eval_strategy`.                                                                                                                                               |
+| CER oscillates between epochs (e.g. 0.092→0.079→0.088)                    | `num_cycles=2` in cosine_with_restarts causes LR spikes at restart points. Switch to `num_cycles=1` for stable decay.                                                                                                                                                                                                                      |
 
 ---
 
 ## Stage 2 — DistilBERT NER (Not Yet Started)
 
-CORD's structured `ground_truth` JSON maps directly to food NER schema with no manual annotation:  
+CORD's structured `ground_truth` JSON maps directly to food NER schema with no manual annotation:
 `nm` → `FOOD_ITEM` | `cnt` → `QUANTITY` | `price` → `PRICE`
 
 SROIE tags (COMPANY, ADDRESS, DATE, TOTAL) have zero overlap with food entities — not used for NER.
