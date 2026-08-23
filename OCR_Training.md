@@ -1,15 +1,69 @@
 
-# OCR_Training.md — Model Training Guide
+# OCR_Training.md — OCR Model Guide
 
-## SmartStock: TrOCR Fine-Tuning
+## SmartStock: Stage 1 OCR
 
-**Version:** 15.0 — STAGE 1 CLOSED. Full notebook appendix (all 65 cells, including commented-out blocks) added. Real-photo inference pipeline documented. Superseded by PaddleOCR evaluation (see Decision Log).
-**Training Environment:** Kaggle (2× T4 GPU, 30 hr/week quota — single GPU enforced)
-**Last Updated:** Post r=16 vs r=32 comparison, generation_config bug fully resolved, local CPU inference validated
+**Current production model: PaddleOCR (pretrained, no fine-tuning required).**
+**Superseded: TrOCR (fine-tuned, CER 0.0631) — full training history retained below for reference.**
+
+**Version:** 16.0 — PaddleOCR adopted as production OCR model. TrOCR Stage 1 training history preserved as historical record. File renamed from TrOCR_Training.md back to OCR_Training.md now that a single doc covers Stage 1 regardless of model.
+**Last Updated:** Post PaddleOCR evaluation — pretrained PP-OCRv6 (small det/rec, doc-orientation/unwarping/textline-orientation disabled) beat fine-tuned TrOCR on both accuracy and CPU latency on real receipt photos.
 
 ---
 
-## STATUS: Stage 1 (TrOCR) — CLOSED
+## STATUS: Stage 1 (OCR) — CLOSED — PaddleOCR is production model
+
+### Why the switch
+
+TrOCR (fine-tuned, CER 0.0631 val) had two unresolved production blockers even after the CRAFT line-detection fix and generation_config bug fixes:
+- CPU inference: ~480s for 65 lines (one receipt) — not viable for a real upload flow
+- WER 0.234 on val — roughly 1 in 4 words wrong, risked compounding errors into Stage 2 NER
+
+PaddleOCR (PP-OCRv6, **pretrained, no fine-tuning**) was evaluated per Issue #9 and beat TrOCR on both accuracy and speed on the same real receipt photos — no training needed to reach this result.
+
+### Real-receipt comparison (same 4 photos, both pipelines)
+
+| Aspect | TrOCR (fine-tuned) | PaddleOCR (pretrained) |
+|---|---|---|
+| 1.jpg text quality | `CoreCSachet`, `1000ng`, `117.45` (digit error) | `Core C Sachet 1's 1000mg`, `1137.45` — correct |
+| Item/price line accuracy | Frequent word-merge and digit errors | Consistently correct on items, quantities, prices across all 4 receipts |
+| CPU latency (1 receipt) | ~480s (65 lines, unoptimized) | ~5–6s (small det/rec models, doc-orientation/unwarping/textline-orientation disabled) |
+| Fine-tuning required | Yes — ~2 months, LoRA on 50K+ line crops | No — pretrained PP-OCRv6 sufficient |
+
+**Verdict: PaddleOCR wins decisively on both axes.** Confirmed on all 4 real test receipts, not just one. Switch adopted — no PaddleOCR fine-tuning planned unless a future accuracy gap appears on a larger real-world sample.
+
+### PaddleOCR — production config
+
+```python
+from paddleocr import PaddleOCR
+
+ocr = PaddleOCR(
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=False,
+    device='cpu',
+    text_detection_model_name="PP-OCRv6_small_det",
+    text_recognition_model_name="PP-OCRv6_small_rec",
+)
+
+result = ocr.predict(image_path_or_array)
+res = result[0]
+texts  = res["rec_texts"]
+scores = res["rec_scores"]
+```
+
+**Environment notes (hard-won, do not re-debug):**
+- PaddleOCR 3.x requires PaddlePaddle ≥ 3.0. Install exact versions per official docs, not "latest": `paddlepaddle==3.2.0` (or matching `paddlepaddle-gpu==3.2.0` build) — mismatched versions cause `set_optimization_level`/PIR/oneDNN errors that look like environment bugs but are version mismatches.
+- `PP-OCRv6` model family uses `small`/`tiny` naming, **not** `mobile` (mobile naming is v3–v5 only). `PP-OCRv6_mobile_det` does not exist and will raise `UnknownModelError`.
+- `ocr.ocr()` is deprecated — use `ocr.predict()`. Return format changed: no more `[[box, (text, score)], ...]` — now a dict with `rec_texts`/`rec_scores` keys.
+- GPU on Kaggle repeatedly failed (`libcuda.so.1` missing, driver/environment issue unrelated to package versions) — not worth fighting further; CPU-only with small models already met latency needs (~5s/receipt).
+- Running the full PaddleOCR pipeline (doc-orientation + unwarping + detection) on **already-cropped single-line images** (e.g. val set crops) is invalid — those stages are built for full document photos. Produces garbage (CER 0.66+) that looks like a model failure but is actually a pipeline/input-shape mismatch. Always benchmark PaddleOCR at the full-receipt level, not on pre-cropped line images.
+
+**Next steps for Stage 1:** none planned. Move to Stage 2 (NER) using PaddleOCR output.
+
+---
+
+## STAGE 1 HISTORY — TrOCR (superseded, kept for reference)
 
 **Final model: r=16 LoRA, CER 0.0631 (val), saved as `smart-stock-model-data` v4 on Kaggle.**
 
@@ -18,12 +72,12 @@
 | v4 run 1 | r=16, lora_alpha=32 | 0.0687 | superseded |
 | v4 run 2 | r=16, resumed | 0.0637 | superseded |
 | v4 run 3 (Optuna LR) | r=16, LR=8.84e-5 | 0.0652 | worse, rejected |
-| v4 run 5 epochs | r=16, LR=1.4824e-4 | **0.0631** | **BEST — production model** |
+| v4 run 5 epochs | r=16, LR=1.4824e-4 | **0.0631** | best TrOCR result |
 | r=32 experiment | r=32, lora_alpha=64 | 0.0633 | no improvement, within noise — confirms plateau |
 
-**Conclusion:** LoRA rank increase does not break the plateau. Error analysis (see Per-Source CER Diagnostic below) shows the remaining error is dominated by WildReceipt label noise and multi-line crop mismatches, not model capacity. Target of CER ≤ 0.05 was not reached (final: 0.0631). Further improvement would require a WildReceipt data-cleaning pass, not more architecture/hyperparameter tuning — deferred, not pursued, since Stage 3/4 don't exist yet to benefit from it.
+**Conclusion:** LoRA rank increase does not break the plateau. Error analysis (see Per-Source CER Diagnostic below) shows the remaining error is dominated by WildReceipt label noise and multi-line crop mismatches, not model capacity. Target of CER ≤ 0.05 was not reached (final: 0.0631). Superseded by PaddleOCR — see above.
 
-**Next step:** Evaluate PaddleOCR (fine-tuned on existing dataset) as a replacement — TrOCR's CPU inference latency (see Production Inference Pipeline section) is not production-viable even after CTranslate2 export is considered, and PaddleOCR's CNN-based architecture is a better structural fit for CPU-served receipt OCR. See Decision Log.
+The rest of this document (architecture notes, full 12-hour session budget, training cells, generation_config bug writeup, TrOCR production inference pipeline, GitHub Issue #8 resolution note, and the full notebook appendix) is retained below as the historical training record.
 
 ---
 
@@ -1484,8 +1538,8 @@ See `ml_service/scripts/local_inference.py` (or equivalent) — loads the saved 
 |---|---|---|
 | Stop LoRA tuning after r=32 test | r=32 gave 0.0633 vs r=16's 0.0631 — no improvement | 4 techniques (LR retuning, resume, encoder unfreeze, rank increase) all failed to break plateau. Error analysis shows WildReceipt label noise dominates remaining error, not model capacity. |
 | CPU-only production serving, no GPU hosting | After confirming Kaggle GPU quota can't back a prod endpoint | Kaggle is experimentation-only, no persistent serving. GPU hosting (Modal/RunPod/Lambda) considered but deferred as unnecessary cost for a CV/portfolio project; CTranslate2 int8 CPU export was the agreed path. |
-| **Evaluate PaddleOCR as TrOCR replacement** | After measuring real CPU inference latency (480s/65 lines, unacceptable) and WER (0.234 — too high to safely feed Stage 2 NER) | PaddleOCR ships an integrated CNN-based detector+recognizer (DBNet + CRNN/SVTR), purpose-built for CPU-served document/receipt OCR — architecturally lighter and faster than TrOCR's autoregressive transformer decoder. Can be fine-tuned on the existing v4 dataset. TrOCR's current WER (0.234, ~1 in 4 words wrong) is too high to hand off to NER as-is — errors would compound through Normalization. **Action:** fine-tune PaddleOCR on existing data, benchmark CER/WER/speed against TrOCR on the same 4 real receipts before committing either model to production. |
-| Do not proceed with NER+OCR integration test on current TrOCR output | Same WER concern as above | Item-level text (product names, prices) is largely usable but metadata fields (invoice #, GST codes) are unreliable; feeding this into NER now would validate NER against corrupted input. Paused pending PaddleOCR comparison. |
+| **Switch to PaddleOCR (pretrained, no fine-tuning)** | Issue #9 — PaddleOCR pretrained PP-OCRv6 benchmarked against TrOCR on the same 4 real receipts | PaddleOCR beat TrOCR decisively on both accuracy and CPU latency (~5s vs ~480s/receipt) **without any fine-tuning** — pretrained PP-OCRv6 small det/rec models (doc-orientation/unwarping/textline-orientation disabled) were sufficient. Original plan assumed fine-tuning would be required (see prior row); it was not. TrOCR's 2-month fine-tuning effort is retained as historical record — it established the dataset, line-detection pipeline (CRAFT), and debugging playbook (generation_config resets, OOD hallucination) that were directly reused to validate PaddleOCR quickly. **Caveat:** benchmarking PaddleOCR's full pipeline on pre-cropped val line images gives an invalid, inflated CER (0.66+) — detection/orientation stages assume full-document input. Real-receipt-level comparison is the only valid benchmark. |
+| Proceed with NER+OCR integration using PaddleOCR output | WER concern resolved — PaddleOCR output is accurate on item/price/quantity lines across all 4 real receipts | Original TrOCR WER (0.234) blocked NER integration since errors would compound through Normalization. PaddleOCR output is accurate enough to proceed. **Unblocked** — Stage 2 (NER) can now use PaddleOCR output. |
 
 ---
 
@@ -1509,11 +1563,41 @@ See `ml_service/scripts/local_inference.py` (or equivalent) — loads the saved 
 
 ---
 
+## GitHub Issue #9 — Resolution Note
+
+**Issue:** `[ML][OCR] Evaluate PaddleOCR as TrOCR replacement — CPU latency + WER too high for production`
+
+**Status: Closed.** Suggested closing comment:
+
+> Resolved. PaddleOCR (PP-OCRv6, pretrained — no fine-tuning) was benchmarked against fine-tuned TrOCR on the same 4 real receipt photos.
+>
+> **Result: PaddleOCR wins decisively on both accuracy and CPU latency**, without fine-tuning:
+> - Item/price/quantity line text was consistently correct across all 4 receipts (e.g. `Core C Sachet 1's 1000mg`, `1137.45` — TrOCR gave `CoreCSachet`, `1000ng`, `117.45`)
+> - CPU latency: ~5–6s/receipt (PP-OCRv6 small det/rec, doc-orientation/unwarping/textline-orientation disabled) vs TrOCR's ~480s/receipt (unoptimized) on the same hardware
+>
+> This changes the original proposal: fine-tuning was assumed necessary going in, but pretrained PaddleOCR already cleared both success criteria (CER/WER *and* CPU speed) from the issue description, so no fine-tuning was performed.
+>
+> **Important caveat found during evaluation, documented in OCR_Training.md:** running PaddleOCR's full pipeline (detection + doc-orientation + unwarping) on pre-cropped single-line val images (rather than full receipt photos) gives an invalid, misleadingly high CER (0.66+) — those pipeline stages assume full-document input. The valid comparison is full-receipt-level only, which is what the 4-photo benchmark above used.
+>
+> Acceptance / success criteria status:
+> - [x] PaddleOCR benchmarked against TrOCR on the same 4 real receipt photos
+> - [x] Beats TrOCR on accuracy (real-receipt level)
+> - [x] Beats TrOCR on CPU inference speed
+> - [x] Decision documented in OCR_Training.md Decision Log
+>
+> **Decision: PaddleOCR (pretrained) is now the production Stage 1 OCR model.** TrOCR fine-tuning history retained in OCR_Training.md as historical record — the dataset, CRAFT line-detection pipeline, and debugging experience it produced were directly reused to evaluate PaddleOCR quickly.
+>
+> Next: Stage 2 (NER) integration using PaddleOCR output — no longer blocked by OCR output quality.
+
+---
+
 ## Full Notebook Appendix — All Cells (Including Commented-Out)
 
 Complete reference copy of `kaggle_trocr.ipynb`, every cell in order, including disabled/commented blocks kept for historical reference (old training arg configs, Optuna search, beam sweep, crop diagnostics). This is the authoritative source; sections above summarize the key decisions and fixes extracted from it.
 
 ## Stage 2 — DistilBERT NER (Not Yet Started)
+
+No longer blocked by OCR output quality — PaddleOCR output is accurate enough on item/price/quantity lines to proceed.
 
 CORD's structured `ground_truth` JSON maps directly to food NER schema with no manual annotation:
 `nm` → `FOOD_ITEM` | `cnt` → `QUANTITY` | `price` → `PRICE`
