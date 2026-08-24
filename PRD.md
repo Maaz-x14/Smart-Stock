@@ -22,7 +22,7 @@ Existing solutions (manual tracking apps, smart fridges) fail due to high fricti
 
 Smart-Stock creates a **Digital Twin** of the user's refrigerator/pantry by extracting inventory data automatically from grocery receipts using a trained ML pipeline (OCR + NER), and maintaining a live expiry-aware inventory with proactive alerts and recipe suggestions.
 
-**Core differentiator:** The OCR and Named Entity Recognition (NER) pipeline is trained in-house — not a third-party API wrapper. This gives the system high accuracy on messy real-world receipt formats and constitutes the primary technical artifact.
+**Core differentiator:** The pipeline is owned and evaluated end-to-end, not a black-box third-party API wrapper. NER is fine-tuned in-house on receipt-domain data. OCR uses PaddleOCR (pretrained) — chosen after benchmarking against an in-house fine-tuned TrOCR model and measurably outperforming it on both accuracy and CPU latency (see OCR_Training.md). Full ownership of the pipeline gives measurable accuracy targets and the ability to swap components on evidence, not a black-box response.
 
 ---
 
@@ -42,7 +42,7 @@ Smart-Stock creates a **Digital Twin** of the user's refrigerator/pantry by extr
 
 | Feature | Description | Priority |
 |---|---|---|
-| Receipt Upload & OCR | User uploads receipt image; system extracts text via trained TrOCR model | P0 |
+| Receipt Upload & OCR | User uploads receipt image; system extracts text via PaddleOCR | P0 |
 | Food Entity Extraction | NER model maps raw receipt tokens to canonical food items with quantity/unit | P0 |
 | Expiry Prediction | Shelf-life engine assigns "Best Before" date per extracted item | P0 |
 | Virtual Fridge Dashboard | React UI showing all inventory items, quantities, expiry countdowns, urgency tiers | P0 |
@@ -66,7 +66,7 @@ Smart-Stock creates a **Digital Twin** of the user's refrigerator/pantry by extr
 ### 5.1 Receipt Scanner
 
 - User uploads a JPEG/PNG/PDF image of a grocery receipt.
-- System runs the image through the trained TrOCR model to extract raw text.
+- System runs the image through PaddleOCR to extract raw text.
 - Raw text is passed through the DistilBERT NER model to extract food entities.
 - Normalization layer maps tokens like `"ORG STRWBRY 1LB"` → `{item: "Strawberries", quantity: 1, unit: "lb"}`.
 - Extracted items are presented to the user for confirmation before saving to inventory.

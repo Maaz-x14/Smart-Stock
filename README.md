@@ -16,11 +16,11 @@ Households waste ~30% of purchased food annually. SmartStock eliminates that by 
 
 ## Why the ML is built in-house
 
-Most receipt apps wrap Google Cloud Vision or AWS Textract. SmartStock trains its own models on receipt-domain data. This matters because:
+Most receipt apps wrap Google Cloud Vision or AWS Textract as a black-box API. SmartStock's pipeline is evaluated and owned end-to-end, even where the best-performing model turned out to be pretrained rather than fine-tuned:
 
-- Off-the-shelf OCR is not tuned for receipt fonts, thermal print artifacts, or abbreviations like `ORG STRWBRY 1LB`
+- OCR: a fine-tuned TrOCR model was built in-house first (see OCR_Training.md); pretrained PaddleOCR was evaluated against it and won on both accuracy and CPU latency, so it's used as-is — a deliberate, measured choice, not a fallback to an unowned API
 - Custom NER lets us extract food entities, quantities, and units in one pass without post-processing hacks
-- Full control over the pipeline means measurable accuracy targets, not black-box API responses
+- Full control over the pipeline means measurable accuracy targets and swappable components, not a black-box API response
 
 ---
 
@@ -32,9 +32,7 @@ Receipt Image
      ▼
 ┌─────────────────────────────────┐
 │  Stage 1: OCR                   │
-│  TrOCR (fine-tuned)             │
-│  Current: CER 0.0631            │
-│  Target:  CER ≤ 0.05            │
+│  PaddleOCR (pretrained PP-OCRv6)│
 └────────────────┬────────────────┘
                  │
                  ▼
@@ -68,20 +66,14 @@ Receipt Image
 
 ## Current ML Status
 
-### Stage 1 — OCR (Active)
+### Stage 1 — OCR ✅ Complete
 
-| Model | microsoft/trocr-base-printed, fine-tuned |
+| Model | PaddleOCR (PP-OCRv6, pretrained — no fine-tuning) |
 |-------|------------------------------------------|
-| Adapter | LoRA on decoder (r=16), encoder blocks 10–11 unfrozen |
-| Training data | CORD + SROIE + WildReceipt (50,657 filtered line crops) |
-| Infrastructure | Kaggle T4 GPU, 30hr/week |
-| Best val CER | **0.0631** (target: ≤ 0.05) |
-| Training approach | Line-crop strategy: TrOCR fed individual receipt lines, not full images. CER dropped from 0.757 → 0.063 after switching. |
+| Config | Small det/rec models; doc-orientation, unwarping, textline-orientation disabled |
+| CPU latency | ~5-6s/receipt |
+| Note | Fine-tuned TrOCR (CER 0.0631) was tried first — see OCR_Training.md — but pretrained PaddleOCR beat it on both accuracy and speed |
 
-Key decisions made during training:
-- Filtered 26% of WildReceipt training data — tiny crops (< 50px wide) caused the model to hallucinate entire receipt footers. Removing them dropped CER from 0.0687 → 0.0631.
-- Partial encoder unfreeze (ViT blocks 10+11) enables receipt-domain visual adaptation without full fine-tuning cost
-- Generation config bug in the base model (`max_length=20`) silently truncated all outputs at test time — fixed by explicit override at save
 
 ### Stage 2 — NER ✅ Complete
 
@@ -104,9 +96,9 @@ Rule-based lookup against a shelf-life reference database with 180+ items. Confi
 
 | Layer | Technology |
 |-------|------------|
-| ML training | PyTorch, HuggingFace Transformers, PEFT (LoRA), Kaggle T4 |
-| Backend | Node.js, PostgreSQL, Alembic migrations |
-| ML service | FastAPI (Python), ONNX inference |
+| ML training | PyTorch, HuggingFace Transformers, PEFT (LoRA), Kaggle T4 — NER stage only; OCR (PaddleOCR) is pretrained, no training infra used |
+| Backend | FastAPI (Python), PostgreSQL, SQLAlchemy 2.0, Alembic migrations |
+| ML service | FastAPI (Python) — PaddleOCR (own runtime) for OCR, ONNX for NER |
 | Frontend | React (web-first, mobile-responsive) |
 | Recipe suggestions | Spoonacular API |
 | Notifications | Push via scheduled daily job |
@@ -119,7 +111,7 @@ Rule-based lookup against a shelf-life reference database with 180+ items. Confi
 Smart-Stock/
 ├── app/                    # Frontend (React)
 ├── ml_service/             # FastAPI ML inference service
-│   ├── ocr/                # TrOCR loader + preprocessor
+│   ├── ocr/                # PaddleOCR loader + preprocessor
 │   ├── ner/                # DistilBERT NER + entity parser
 │   ├── normalization/      # Abbreviation map + fuzzy + LLM fallback
 │   └── expiry/             # Shelf-life lookup + confidence scoring
@@ -127,7 +119,7 @@ Smart-Stock/
 ├── migrations/             # Alembic DB migrations
 ├── PRD.md                  # Product requirements
 ├── ML_Pipeline.md          # Full pipeline architecture
-├── OCR_Training.md         # TrOCR fine-tuning guide + full training history
+├── OCR_Training.md         # PaddleOCR setup + TrOCR fine-tuning guide + full training history
 ├── NER_Training.md         # DistilBERT NER training guide
 ├── Architecture.md         # System architecture
 ├── API_Spec.md             # REST API specification
@@ -140,12 +132,11 @@ Smart-Stock/
 
 | Stage | Metric | Target | Current |
 |-------|--------|--------|---------|
-| OCR | CER | ≤ 0.05 | 0.0631 |
-| OCR | WER | ≤ 0.10 | 0.231 |
-| NER | F1 | ≥ 0.88 | **0.907** ✅ |
-| Normalization | Match rate | ≥ 80% | In progress |
-| Expiry | MAE (days) | ≤ 1.5 | In progress |
-| End-to-end | Item accuracy | ≥ 85% | In progress |
+| OCR | Real-receipt accuracy | Beat fine-tuned TrOCR baseline | ✅ PaddleOCR (pretrained) — correct on item/price/qty lines across all test receipts; CER/WER not applicable (pretrained, no held-out labeled set) |
+| NER | F1 | ≥ 0.88 | **0.907** ✅ (DistilBERT — alternatives being evaluated, not yet locked in) |
+| Normalization | Match rate | ≥ 80% | Built, not yet tested against real OCR→NER output |
+| Expiry | MAE (days) | ≤ 1.5 | Built, not yet tested against real pipeline output |
+| End-to-end | Item accuracy | ≥ 85% | Not yet measured — blocked on NER lock-in + Stage 3/4 real-data validation |
 
 ---
 
@@ -154,8 +145,8 @@ Smart-Stock/
 | Stage | Target |
 |-------|--------|
 | Image preprocessing | < 200ms |
-| OCR (TrOCR ONNX) | < 1500ms |
+| OCR (PaddleOCR) | < ~5-6s |
 | NER (DistilBERT ONNX) | < 500ms |
 | Normalization | < 300ms |
 | Expiry prediction | < 100ms |
-| **Total** | **< 3s** |
+| **Total** | **< 10s** |

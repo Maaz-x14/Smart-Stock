@@ -19,7 +19,7 @@ The Smart-Stock ML pipeline transforms a raw receipt image into structured, expi
 │       ▼                                                         │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  STAGE 1: OCR                                            │   │
-│  │  Model: TrOCR (fine-tuned on SROIE + CORD)               │   │
+│  │  Model: PaddleOCR (pretrained PP-OCRv6)                  │   │
 │  │  Input:  Receipt image (JPEG/PNG/PDF)                    │   │
 │  │  Output: Raw text string                                 │   │
 │  └──────────────────────────┬───────────────────────────────┘   │
@@ -60,47 +60,35 @@ The Smart-Stock ML pipeline transforms a raw receipt image into structured, expi
 
 ### Model
 
-**TrOCR** (Transformer-based OCR) — `microsoft/trocr-base-printed`, fine-tuned on receipt-domain data.
+**PaddleOCR** (PP-OCRv6, pretrained — no fine-tuning) — small det/rec models, doc-orientation/unwarping/textline-orientation disabled for speed. Ships its own integrated text detector, so no separate line-segmentation stage is needed.
 
-TrOCR uses a Vision Transformer (ViT) encoder and a RoBERTa-based decoder. It outperforms traditional Tesseract OCR on noisy, compressed receipt images due to its end-to-end transformer architecture.
+PaddleOCR's CNN-based detector+recognizer (DBNet + CRNN/SVTR) proved a better structural fit for CPU-served receipt OCR than TrOCR's transformer decoder — beat a 2-month fine-tuned TrOCR on both accuracy and latency (~5-6s/receipt vs ~480s/receipt) without any fine-tuning. See OCR_Training.md Decision Log for the full comparison.
 
 ### Input Preprocessing
 
-Before feeding to TrOCR:
-
-1. **Deskew** — detect and correct receipt tilt using Hough line transform (OpenCV)
-2. **Binarize** — Otsu thresholding to improve contrast on faded thermal receipts
-3. **Resize** — rescale to 384×384 (ViT input resolution), preserving aspect ratio with padding
-4. **Normalize** — pixel values normalized to [0, 1] with ImageNet mean/std
+Handled internally by PaddleOCR's pipeline (detection runs on the full image directly — no separate deskew/binarize/resize/line-crop stage required, unlike the original TrOCR approach).
 
 ### Output
 
-A raw text string preserving line structure:
-
-```
-KROGER SUPERMARKET
-01/01/2025
-ORG STRWBRY 1LB     2.99
-WHOLE MILK 1GAL     4.49
-GRK YOGURT PLAIN    1.89
-...
+```python
+result = ocr.predict(image_path)
+res = result[0]
+texts  = res["rec_texts"]   # list of recognized text lines
+scores = res["rec_scores"]  # confidence per line
 ```
 
 ### OCR Post-processing
 
-- Line segmentation: split output by newline
 - Price line filtering: remove lines matching pattern `r'^\d+\.\d{2}$'` (price-only lines)
-- Header/footer stripping: remove store name, date, total, tax lines using keyword heuristics
-
----
+- Header/footer stripping: remove store name, date, total, tax lines using keyword heuristics (GST, Invoice, Transaction, POS, Customer, CNIC, Payments, Total, Discount, Rounding, Tax Breakup — planned pre-filter before Stage 2 NER)
 
 ## 3. Stage 2: NER — Entity Extraction
 
 ### Model
 
-**DistilBERT** (`distilbert-base-uncased`), fine-tuned for token classification on an annotated receipt NER corpus.
+**DistilBERT** (`distilbert-base-uncased`), fine-tuned for token classification on an annotated receipt NER corpus. F1 0.907 (test), exceeds target.
 
-DistilBERT is chosen over full BERT for its 40% smaller size with ~97% performance retention — critical for keeping inference fast on CPU deployment.
+**Not yet locked in as final** — given OCR's lesson (fine-tuned TrOCR lost to pretrained PaddleOCR), DistilBERT is being benchmarked against BERT-base, RoBERTa-base, ModernBERT-base, and a spaCy transformer pipeline before committing. See NER_Training.md for status.
 
 ### Entity Labels (BIO tagging scheme)
 
@@ -278,8 +266,8 @@ Items with confidence < 0.60 are surfaced in the confirmation modal with a warni
 ml_service/
 ├── pipeline.py          # Orchestrates all 4 stages
 ├── ocr/
-│   ├── model.py         # TrOCR loader + inference
-│   └── preprocessor.py  # Image preprocessing
+│   ├── model.py         # PaddleOCR loader + inference
+│   └── preprocessor.py  # Optional receipt cleanup/helpers
 ├── ner/
 │   ├── model.py         # DistilBERT loader + inference
 │   └── entity_parser.py # BIO tag grouping
@@ -289,21 +277,23 @@ ml_service/
 │   └── llm_fallback.py
 ├── expiry/
 │   └── predictor.py     # Shelf-life lookup + confidence
-└── models/              # Serialized model weights (ONNX)
-    ├── trocr.onnx
+└── models/              # Serialized model weights
+    ├── paddleocr        # PaddleOCR's own runtime — not ONNX
     └── distilbert_ner.onnx
 ```
 
 ### Latency Budget (per receipt, CPU inference)
 
+**Note:** Total budget below is stale — OCR alone (~5-6s) already exceeds the original <3000ms total target set when OCR was assumed to be TrOCR+ONNX at <1500ms. Revisit this budget once Stage 2 NER model is locked in and Stage 3/4 are validated against real pipeline output.
+
 | Stage                 | Target Latency     |
 | --------------------- | ------------------ |
-| Image preprocessing   | < 200ms            |
-| OCR (TrOCR ONNX)      | < 1500ms           |
+| Image preprocessing   | N/A — handled internally by PaddleOCR |
+| OCR (PaddleOCR)        | ~5-6s (measured, pretrained, not yet latency-optimized) |
 | NER (DistilBERT ONNX) | < 500ms            |
 | Normalization         | < 300ms            |
 | Expiry prediction     | < 100ms            |
-| **Total**       | **< 3000ms** |
+| **Total**       | **~6-7s (target needs revision, see note above)** |
 
 ---
 
@@ -311,11 +301,13 @@ ml_service/
 
 ### OCR
 
-| Metric                     | Definition                  | Target |
-| -------------------------- | --------------------------- | ------ |
-| Character Error Rate (CER) | Edit distance / total chars | ≤ 5%  |
-| Word Error Rate (WER)      | Word-level edit distance    | ≤ 10% |
-| Line Detection Rate        | % of receipt lines captured | ≥ 95% |
+CER/WER targets below were set for a fine-tuned model (TrOCR) with a held-out labeled test set. PaddleOCR is used pretrained — no fine-tuning eval loop produces these numbers today. Real-receipt accuracy was validated qualitatively instead (correct item/price/qty extraction across test receipts). A formal CER/WER benchmark against annotated real receipts is still open — see OCR_Training.md.
+
+| Metric                     | Definition                  | Target | Status |
+| -------------------------- | --------------------------- | ------ | ------ |
+| Character Error Rate (CER) | Edit distance / total chars | ≤ 5%  | Not measured for PaddleOCR — no labeled eval set yet |
+| Word Error Rate (WER)      | Word-level edit distance    | ≤ 10% | Not measured for PaddleOCR — no labeled eval set yet |
+| Line Detection Rate        | % of receipt lines captured | ≥ 95% | Not formally measured — qualitatively all lines captured on test receipts |
 
 ### NER
 

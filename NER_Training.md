@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Stage 2 takes raw OCR text lines (TrOCR output from Stage 1) and extracts structured food entities using a fine-tuned DistilBERT token classification model.
+Stage 2 takes raw OCR text lines (PaddleOCR output from Stage 1) and extracts structured food entities using a fine-tuned DistilBERT token classification model.
 
 ```
 Input:  ["ORG", "STRWBRY", "1", "LB", "2.99"]
@@ -418,7 +418,7 @@ training_args = TrainingArguments(
 
     # Training schedule
     num_train_epochs=15,
-    per_device_train_batch_size=32,    # NER is much lighter than TrOCR — batch 32 fits fine
+    per_device_train_batch_size=32,    
     per_device_eval_batch_size=32,
 
     # Optimizer
@@ -728,7 +728,7 @@ RESUME_FROM = f"{NER_DATASET}/distilbert-ner-smart-stock/checkpoint-1365"
 ```
 
 ### Disk Usage
-NER datasets are text-only — negligible disk vs TrOCR image tensors. Full pre-tokenized dataset fits in RAM (~100MB). No need for on-the-fly preprocessing or cache workarounds used in Stage 1.
+NER datasets are text-only — negligible disk vs PaddleOCR image tensors. Full pre-tokenized dataset fits in RAM (~100MB). No need for on-the-fly preprocessing or cache workarounds used in Stage 1.
 
 ### Save Strategy
 - **Quick Save** → code only

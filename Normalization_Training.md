@@ -13,7 +13,7 @@ Before any code: Stage 3 is **not a training pipeline**. It is a production modu
 
 | Stage | What it does | Where it lives |
 |---|---|---|
-| Stage 1 (OCR) | Fine-tune TrOCR on receipt images | Kaggle notebook |
+| Stage 1 (OCR) | PaddleOCR setup + validation | Kaggle notebook |
 | Stage 2 (NER) | Fine-tune DistilBERT for token classification | Kaggle notebook |
 | **Stage 3 (Normalization)** | **Rule-based + fuzzy + LLM text normalization** | **`ml_service/normalization/`** |
 | Stage 4 (Expiry) | Shelf-life lookup + confidence scoring | `ml_service/expiry/` |
@@ -101,7 +101,6 @@ ml_service/
 ├── expiry/
 │   └── predictor.py
 └── models/
-    ├── trocr.onnx
     └── distilbert_ner.onnx
 ```
 

@@ -53,8 +53,8 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 │  │            Receipt Image             │   │            │         │
 │  │                  │                   │   │            │         │
 │  │         ┌────────▼────────┐          │   │            │         │
-│  │         │  TrOCR (fine-   │          │   │            │         │
-│  │         │  tuned)         │          │   │            │         │
+│  │         │  PaddleOCR      │          │   │            │         │
+│  │         │  (pretrained)   │          │   │            │         │
 │  │         └────────┬────────┘          │   │            │         │
 │  │                  │  raw text         │   │            │         │
 │  │         ┌────────▼────────┐          │   │            │         │
@@ -138,7 +138,7 @@ Detailed in `ML_Pipeline.md`. Summary:
 Receipt Image
      │
      ▼
-TrOCR (fine-tuned on SROIE/CORD)
+PaddleOCR (pretrained PP-OCRv6)
      │  Raw extracted text
      ▼
 DistilBERT NER (fine-tuned on annotated receipt corpus)
@@ -178,7 +178,7 @@ FastAPI saves image to temp storage
         │
         ▼
 ml_service.run_pipeline(image_path)
-    ├── TrOCR extracts raw text
+    ├── PaddleOCR extracts raw text
     ├── NER model extracts entities
     ├── Normalization maps to canonical items
     └── Expiry engine predicts best-before dates
@@ -265,7 +265,7 @@ PATCH /api/inventory/bulk-consume
 └──────────────────────────────────────────────────────────┘
 ```
 
-**ML Model Hosting:** Models serialized to ONNX or TorchScript, loaded at startup in the FastAPI container. Inference is synchronous for MVP; async job queue (Celery + Redis) added post-MVP for scale.
+**ML Model Hosting:** PaddleOCR runs through its own CPU runtime; NER can be exported to ONNX for CPU inference and loaded at startup in the FastAPI container. Inference is synchronous for MVP; async job queue (Celery + Redis) added post-MVP for scale.
 
 ---
 
@@ -273,9 +273,9 @@ PATCH /api/inventory/bulk-consume
 
 | Decision              | Choice                              | Rationale                                                    |
 | --------------------- | ----------------------------------- | ------------------------------------------------------------ |
-| ML framework          | PyTorch + HuggingFace Transformers  | Best ecosystem for TrOCR + DistilBERT fine-tuning            |
+| ML framework          | PaddleOCR + PyTorch/HuggingFace     | PaddleOCR handles OCR; HuggingFace supports NER model training/evaluation |
 | API framework         | FastAPI                             | Native async, Pydantic validation, Python for ML co-location |
 | Frontend state        | React Query + Zustand               | Server state and UI state separated cleanly                  |
 | DB ORM                | SQLAlchemy 2.0                      | Type-safe, async-compatible                                  |
-| Model serialization   | ONNX                                | Faster CPU inference for deployment without GPU              |
+| Model serialization   | PaddleOCR runtime + ONNX for NER    | PaddleOCR ships its own runtime; ONNX keeps NER CPU inference fast |
 | Receipt image storage | Temp only (deleted post-processing) | Privacy; no long-term image retention                        |
