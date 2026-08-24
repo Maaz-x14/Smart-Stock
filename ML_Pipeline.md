@@ -88,7 +88,46 @@ scores = res["rec_scores"]  # confidence per line
 
 **DistilBERT** (`distilbert-base-uncased`), fine-tuned for token classification on an annotated receipt NER corpus. F1 0.907 (test), exceeds target.
 
-**Not yet locked in as final** — given OCR's lesson (fine-tuned TrOCR lost to pretrained PaddleOCR), DistilBERT is being benchmarked against BERT-base, RoBERTa-base, ModernBERT-base, and a spaCy transformer pipeline before committing. See NER_Training.md for status.
+**Locked in.** Benchmarked against BERT-base, RoBERTa-base, ModernBERT-base (same `ner_splits`, 15 epochs) — DistilBERT won on both F1 (0.9156) and CPU latency (28.75ms). See NER_Training.md §23 for full comparison.
+
+### Pre-filter (rule-based, before NER)
+
+Runs on OCR output lines before they reach the NER model. Drops lines that are 100% certainly not items — pure noise, no food-semantic judgment involved (that judgment is NER + Stage 3's job, not this filter's). Module: `ml_service/ner/prefilter.py`.
+
+```python
+import re
+
+DROP_KEYWORDS = {
+    "GST", "INVOICE", "TRANSACTION", "POS", "CUSTOMER", "CNIC", "PAYMENTS",
+    "TOTAL", "DISCOUNT", "ROUNDING", "TAX BREAKUP", "MRP", "NON MRP",
+    "CHANGE DUE", "CASH", "THANK YOU", "VISIT AGAIN", "COME AGAIN",
+    "CASHIER", "OPERATOR", "SAVE RECEIPT", "SUBTOTAL", "VAT",
+}
+
+PRICE_ONLY_RE   = re.compile(r"^Rs?\.?\s*[\d,]+\.?\d*$", re.IGNORECASE)
+PHONE_RE        = re.compile(r"^\+?\d[\d\-\s]{7,}$")
+DATE_RE         = re.compile(r"^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$")
+TIME_RE         = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$", re.IGNORECASE)
+SEPARATOR_RE    = re.compile(r"^[-=*_]{3,}$")
+PERCENT_ONLY_RE = re.compile(r"^\d{1,2}(\.\d+)?\s*%$")
+BARCODE_RE      = re.compile(r"^\d{8,}$")
+
+def should_drop_line(line: str) -> bool:
+    stripped = line.strip()
+
+    if len(stripped) < 3:
+        return True
+    if any(kw in stripped.upper() for kw in DROP_KEYWORDS):
+        return True
+    if "@" in stripped or "www." in stripped.lower() or "http" in stripped.lower() or ".com" in stripped.lower():
+        return True
+    for pattern in (PRICE_ONLY_RE, PHONE_RE, DATE_RE, TIME_RE, SEPARATOR_RE, PERCENT_ONLY_RE, BARCODE_RE):
+        if pattern.match(stripped):
+            return True
+    return False
+```
+
+**Scope:** drops standalone price/total/date/contact/barcode lines only — never strips a price token off an item line (`"STRWBRY 1 LB 2.99"` stays whole; NER still tags `B-PRICE` on it). Not yet validated against real PaddleOCR receipt output — risk noted in NER_Training.md-adjacent testing: substring keyword match on "CASH"/"TOTAL" could false-positive on a product name that happens to contain those words.
 
 ### Entity Labels (BIO tagging scheme)
 
@@ -104,7 +143,7 @@ scores = res["rec_scores"]  # confidence per line
 
 ### Input
 
-Tokenized receipt text lines (after OCR post-processing). Lines are processed independently. Max sequence length: 128 tokens.
+Tokenized receipt text lines, after OCR post-processing **and** the rule-based pre-filter (see below — drops pure-noise lines before NER ever sees them). Lines are processed independently. Max sequence length: 128 tokens.
 
 ### Output
 
@@ -269,6 +308,7 @@ ml_service/
 │   ├── model.py         # PaddleOCR loader + inference
 │   └── preprocessor.py  # Optional receipt cleanup/helpers
 ├── ner/
+│   ├── prefilter.py     # Rule-based noise-line drop, before NER
 │   ├── model.py         # DistilBERT loader + inference
 │   └── entity_parser.py # BIO tag grouping
 ├── normalization/
