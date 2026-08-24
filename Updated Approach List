@@ -1,9 +1,0 @@
-## Updated Approach List
-
-| Priority | Technique | Rationale |
-|----------|-----------|-----------|
-| **1 — Next session** | Partial ViT encoder unfreeze (top 2 blocks) + label smoothing 0.1 bundled | Biggest remaining lever. Label smoothing is free to add alongside. Reduce to 5-6 epochs, expect ~0.7s/step. |
-| **2 — After unfreeze** | Re-run Optuna | LR tuned on frozen encoder won't transfer. One dedicated session after unfreeze stabilizes. |
-| **3 — Parallel / cheap** | Per-source `source` field in dataset + error audit | No training cost. Add during next dataset touch. Required before reweighting sources. |
-| **4 — If stuck >0.10** | PaddleOCR recognition swap | Only if TrOCR headroom is genuinely exhausted. Full pipeline rewrite cost. |
-| **5 — If errors cluster on image quality** | Preprocessing: contrast enhancement, deskew | Only justified if error audit shows blur/skew as dominant failure mode, not label noise. |
