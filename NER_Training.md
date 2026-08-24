@@ -866,3 +866,20 @@ After training, inspect failure cases:
 | Price false positives | Dates ("01/25") or product codes predicted B-PRICE |
 | Domain gap | Model failing on abbreviations not seen in CORD/TASTEset |
 | OOV tokens | New abbreviations split into garbage subwords — check with tokenizer first |
+
+---
+
+## 23. Model Comparison (Phase C)
+
+Compared DistilBERT (already trained, Run 2 weights) against BERT-base, RoBERTa-base, ModernBERT-base — same `ner_splits`, same 15 epochs, seqeval entity-level F1, CPU single-line inference latency.
+
+| Model | F1 | Precision | Recall | CPU latency (ms) |
+|---|---|---|---|---|
+| **distilbert-base-uncased** | **0.9156** | 0.9369 | 0.8951 | **28.75** |
+| bert-base-uncased | 0.8814 | 0.8921 | 0.8710 | 57.31 |
+| roberta-base | 0.8824 | 0.9143 | 0.8527 | 59.35 |
+| answerdotai/ModernBERT-base | 0.8536 | 0.8697 | 0.8381 | 85.69 |
+
+**Caveat:** BERT/RoBERTa/ModernBERT training logs show overfitting at 15 epochs — train loss → near 0 while val loss rises after ~epoch 6–8 (e.g. ModernBERT: val loss 0.74 → 1.10). The epoch count was tuned for DistilBERT, not re-tuned per model, so this comparison shows DistilBERT winning under a fixed training budget, not a definitive architecture ranking.
+
+**Decision:** DistilBERT locked in as the NER model. Best F1, best latency, no further comparison needed. Keep the existing 15-epoch training schedule.

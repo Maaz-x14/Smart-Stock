@@ -6,7 +6,7 @@
 
 ## Writing style for this project (important)
 - No over-explanation. Short, direct answers.
-- Propose approach before code. Ask one clarifying question at a time, don't assume.
+- Propose approach before code. Ask clarifying question at a time, don't assume.
 - Surgical edits to existing docs/code — never full rewrites unless explicitly asked.
 - Push back on bad ideas. Distinguish facts from speculation.
 - Individual per-file commits.
