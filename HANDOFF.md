@@ -69,25 +69,26 @@ Full details, issue resolution comments, decision log: `OCR_Training.md`.
 
 ---
 
-## Stage 2 — NER: IN PROGRESS
+## Stage 2 — NER: ✅ LOCKED IN
 
-**Current model:** DistilBERT, fine-tuned, F1 0.907 (test), exceeds all targets (F1≥0.88, P≥0.90, R≥0.86). Saved on Kaggle: `distilbert-ner-smart-stock` (verify: is the dataset's `-best` folder Run 2 output (F1 0.907) — last known status was "not updated yet," needs confirming before using as baseline).
+**Model:** DistilBERT, fine-tuned, F1 0.907 (original test run). Saved on Kaggle: `distilbert-ner-smart-stock` (Run 2 weights confirmed correct via comparison notebook — DistilBERT loaded from this path scored F1 0.9156 on a freshly-drawn test split, consistent with Run 2, not Run 1's 0.835).
 
-**Not locking in yet** — given the OCR lesson (fine-tuned TrOCR lost to pretrained PaddleOCR), want to verify DistilBERT is actually the best option before committing.
+**Model comparison — done.** Compared against BERT-base, RoBERTa-base, ModernBERT-base (same `ner_splits`, 15 epochs, seqeval F1, CPU latency). DistilBERT won on both F1 (0.9156) and latency (28.75ms) — see NER_Training.md §23 for full table and an overfitting caveat on the other 3 models (not a training-budget-controlled architecture ranking). spaCy comparison skipped — clear winner already emerged, no need per original plan's own condition.
 
-### Plan (in progress, not started)
+**Decision:** DistilBERT locked in. No further model comparison.
 
-1. **Model comparison** — test DistilBERT (current) vs BERT-base, RoBERTa-base, ModernBERT-base, spaCy transformer pipeline. Same train/val/test split, seqeval F1/precision/recall, CPU latency per line. Use PaddleOCR output as real-world test input, not just clean synthetic/CORD val set.
-2. **OCR→NER data flow decisions (made, not yet implemented):**
-   - Rule-based regex/keyword pre-filter before NER (drop price-only lines, header/footer keywords like GST/Invoice/Total/CNIC/Payments) — cheap, reduces NER workload and false positives.
-   - NER itself learns to output `O` for non-grocery items (electronics/furniture on mixed-category receipts, e.g. Imtiaz Mart/cash-and-carry stores selling everything) — via training data reflecting this, OR post-NER filter against the Stage 3 `shelf_life_reference` whitelist (leaning toward this — simpler, reuses existing table, no re-labeling of CORD/TASTEset needed).
-3. Not yet started: actual comparison notebook, filter implementation.
+### Real-OCR pipeline analysis — in progress (new, not in original plan)
 
-**Question left open for next session:** confirm Kaggle `distilbert-ner-smart-stock` dataset actually holds Run 2 (F1 0.907) weights before treating that number as trustworthy baseline for comparison.
+Ran actual PaddleOCR output (4 real receipts) through pipeline analysis for the first time. Found a structural blocker not visible from synthetic/CORD data:
 
-Full training details, dataset sources, entity schema, known bugs: `NER_Training.md`.
+- **PaddleOCR emits one line per detected text-box, not one line per logical receipt row.** An item's name, quantity, price, discount, and total are 5+ separate unordered lines (field order even varies receipt-to-receipt — qty-before-price on some, price-before-qty on others). Synthetic training data assumes single-line `"STRWBRY 1 LB 2.99"` format — real OCR output doesn't look like that.
+- **Open question:** does Stage 1's PaddleOCR call retain bounding-box coordinates, or only flat text? Unconfirmed — needs checking against actual extraction code/latest PaddleOCR docs. If coordinates exist, row-reconstruction (cluster boxes by y-position into logical rows) is needed as a new Stage 1.5, before Phase A/B filtering makes sense.
+- Price token: **confirmed safe to discard** — not in DB_Schema.md `inventory_items` at all.
+- Quantity: **confirmed required** — `inventory_items.quantity NUMERIC(10,2) NOT NULL`, not discardable.
+- PaddleOCR returns a per-line confidence score (`[0.98]`, etc.) — usable as a garbage-line signal, but no reliable threshold yet (checked against real data: confidence doesn't cleanly separate garbage from real text — a garbage line scored 1.00, another real line scored 0.67). Needs proper distribution analysis on a larger labeled sample before picking a cutoff, not a guessed number.
+- Real evidence (not hypothetical) that Phase B's `NOT_FOOD` gate is needed: receipt 1 is a pharmacy receipt with real non-food items (`"Supravit-M Tablet 10's"`).
 
----
+Full training details, dataset sources, entity schema, comparison table: `NER_Training.md`.
 
 ## Stage 3 — Normalization: BUILT, untested against real pipeline
 
@@ -107,13 +108,15 @@ Same status as Stage 3: built but not run against real end-to-end pipeline outpu
 
 ## Immediate Next Steps (in order)
 
-1. Confirm Kaggle `distilbert-ner-smart-stock` dataset version (Run 1 vs Run 2 weights).
-2. Build NER model comparison notebook (DistilBERT vs BERT-base/RoBERTa-base/ModernBERT-base vs spaCy) using PaddleOCR real-receipt output as test input.
-3. Decide/implement OCR→NER pre-filter (regex/keyword line filter).
-4. Decide/implement non-grocery-item filtering (NER `O`-tagging vs post-filter against shelf_life_reference).
-5. Lock in final NER model, update NER_Training.md with comparison results and decision.
-6. Run Stage 3 + Stage 4 against real Stage 1+2 output for the first time — validate end-to-end.
-7. Save/export whichever NER model wins (ONNX already scaffolded in NER_Training.md).
+1. File GitHub issues for the items below (do this first in next session).
+2. Check Stage 1 OCR extraction code / latest PaddleOCR docs — does it retain bounding-box coordinates per detected text box, or only flat text?
+3. If coordinates available: design + implement Stage 1.5 row-reconstruction (cluster text-boxes into logical receipt rows by y-position) — blocks everything downstream, do this before Phase A/B filtering.
+4. Within a reconstructed row: discard price token (confirmed unused in DB_Schema.md), keep item name + quantity (confirmed required field).
+5. Determine a real confidence-score threshold for dropping garbage OCR lines — via distribution analysis on a labeled sample, not a guessed number.
+6. Implement Phase A rule-based prefilter (`ml_service/ner/prefilter.py`, already drafted in ML_Pipeline.md) — run it on reconstructed rows, not raw boxes.
+7. Implement Phase B `NOT_FOOD` gate in Stage 3 Pass 3 (`llm_fallback.py`) — add NOT_FOOD escape hatch to LLM prompt, return `(None, 0.0)` on that response. Decide: silent discard vs. surfaced in confirmation modal as "detected but excluded."
+8. Run Stage 3 + Stage 4 against real reconstructed Stage 1+2 output for the first time — validate end-to-end.
+9. Export final DistilBERT NER model to ONNX (scaffolded in NER_Training.md).
 
 ---
 
