@@ -2,7 +2,7 @@
 
 ## Smart-Stock REST API
 
-**Version:** 1.0
+**Version:** 1.1 — `extracted_items[]` now includes `brand`, `is_food`; `price`/`discount`/`total` from Row Parser are extracted internally but not exposed (not persisted, see DB_Schema.md §3)
 **Base URL:** `https://api.smart-stock.app/api/v1`
 **Auth:** JWT Bearer Token (all endpoints except `/auth/*`)
 
@@ -133,6 +133,8 @@ Upload a receipt image and run the ML pipeline.
     {
       "raw_token": "ORG STRWBRY 1LB",
       "canonical_name": "Strawberries",
+      "brand": null,
+      "is_food": true,
       "quantity": 1.0,
       "unit": "lb",
       "category": "Produce",
@@ -144,6 +146,8 @@ Upload a receipt image and run the ML pipeline.
     {
       "raw_token": "WHOLE MILK 1GAL",
       "canonical_name": "Whole Milk",
+      "brand": null,
+      "is_food": true,
       "quantity": 1.0,
       "unit": "gal",
       "category": "Dairy",
@@ -151,12 +155,29 @@ Upload a receipt image and run the ML pipeline.
       "shelf_life_days": 14,
       "confidence": 0.96,
       "storage_context": "fridge"
+    },
+    {
+      "raw_token": "Supravit-M Tablet 10's",
+      "canonical_name": null,
+      "brand": "Supravit",
+      "is_food": false,
+      "quantity": 6.0,
+      "unit": null,
+      "category": null,
+      "predicted_expiry_date": null,
+      "shelf_life_days": null,
+      "confidence": null,
+      "storage_context": null
     }
   ],
-  "total_items_extracted": 2,
+  "total_items_extracted": 3,
   "processing_time_ms": 1842
 }
 ```
+
+**`is_food = false` items:** surfaced, not silently dropped. These skip Normalization and Expiry Prediction entirely (no `canonical_name`, `category`, `predicted_expiry_date`, `shelf_life_days`, `confidence`, or `storage_context` — all `null`). The frontend confirmation modal shows these flagged as "detected but excluded — not a food item," so the user can see and, if they choose, manually override and add the item anyway via `POST /inventory` directly (not via `/receipts/confirm`, which expects food items).
+
+**Not included:** `price`, `discount`, `total` — extracted internally by Row Parser (ML_Pipeline.md §5) but not persisted or exposed; confirmed unused by the inventory tracking use case.
 
 **Errors:** `400` Unsupported file type | `413` File too large | `422` OCR returned no readable text | `500` ML pipeline failure
 
@@ -176,6 +197,7 @@ Confirm extracted items and save to inventory.
   "items": [
     {
       "canonical_name": "Strawberries",
+      "brand": null,
       "quantity": 1.0,
       "unit": "lb",
       "category": "Produce",
@@ -186,7 +208,7 @@ Confirm extracted items and save to inventory.
 }
 ```
 
-*User may edit `canonical_name`, `quantity`, `predicted_expiry_date` before confirming.*
+*User may edit `canonical_name`, `quantity`, `predicted_expiry_date` before confirming. Items with `is_food = false` in the upload response are not expected here — they lack the fields (`category`, `predicted_expiry_date`) this endpoint requires.*
 
 **Response `201`:**
 
@@ -212,7 +234,7 @@ List all inventory items for the authenticated user.
 **Query Parameters:**
 
 | Param        | Type       | Description                                                                 |
-| ------------ | ---------- | --------------------------------------------------------------------------- |
+| ------------ | ---------- | ----------------------------------------------------------------------------- |
 | `category` | `string` | Filter by category:`Produce`, `Dairy`, `Meat`, `Pantry`, `Frozen` |
 | `status`   | `string` | Filter by status:`ACTIVE`, `CONSUMED`, `WASTED` (default: `ACTIVE`) |
 | `sort_by`  | `string` | `expiry_date`, `name`, `category` (default: `expiry_date`)          |
@@ -228,6 +250,7 @@ List all inventory items for the authenticated user.
     {
       "id": "uuid",
       "canonical_name": "Strawberries",
+      "brand": null,
       "quantity": 1.0,
       "unit": "lb",
       "category": "Produce",
@@ -261,6 +284,7 @@ Manually add a single inventory item.
 ```json
 {
   "canonical_name": "Greek Yogurt",
+  "brand": null,
   "quantity": 2.0,
   "unit": "container",
   "category": "Dairy",
@@ -276,6 +300,7 @@ Manually add a single inventory item.
 {
   "id": "uuid",
   "canonical_name": "Greek Yogurt",
+  "brand": null,
   "quantity": 2.0,
   "unit": "container",
   "category": "Dairy",
@@ -314,6 +339,7 @@ Update an inventory item.
 ```json
 {
   "canonical_name": "Strawberries",
+  "brand": null,
   "quantity": 0.5,
   "predicted_expiry_date": "2025-01-07",
   "storage_context": "fridge",
@@ -377,7 +403,7 @@ Get all active alerts for the authenticated user.
 **Query Parameters:**
 
 | Param      | Type       | Description                                     |
-| ---------- | ---------- | ----------------------------------------------- |
+| ---------- | ---------- | ------------------------------------------------- |
 | `status` | `string` | `ACTIVE`, `DISMISSED` (default: `ACTIVE`) |
 
 **Response `200`:**
@@ -436,7 +462,7 @@ Fetch recipe suggestions for a list of ingredients.
 **Query Parameters:**
 
 | Param           | Type       | Required | Description                                                 |
-| --------------- | ---------- | -------- | ----------------------------------------------------------- |
+| --------------- | ---------- | -------- | ------------------------------------------------------------- |
 | `ingredients` | `string` | Yes      | Comma-separated ingredient names:`strawberries,milk,eggs` |
 | `limit`       | `int`    | No       | Max recipes to return (default: 5, max: 10)                 |
 
@@ -478,7 +504,7 @@ Get waste log entries for the authenticated user.
 **Query Parameters:**
 
 | Param         | Type       | Description                  |
-| ------------- | ---------- | ---------------------------- |
+| ------------- | ---------- | ------------------------------- |
 | `outcome`   | `string` | `CONSUMED`, `WASTED`     |
 | `from_date` | `date`   | Start date filter (ISO 8601) |
 | `to_date`   | `date`   | End date filter (ISO 8601)   |
@@ -524,7 +550,7 @@ All errors follow a consistent shape:
 **Standard Error Codes:**
 
 | Code                 | HTTP Status | Meaning                                 |
-| -------------------- | ----------- | --------------------------------------- |
+| --------------------- | ------------- | ------------------------------------------- |
 | `VALIDATION_ERROR` | 422         | Request body failed Pydantic validation |
 | `UNAUTHORIZED`     | 401         | Missing or invalid token                |
 | `FORBIDDEN`        | 403         | Resource not owned by requesting user   |
@@ -538,7 +564,7 @@ All errors follow a consistent shape:
 ## 8. Rate Limiting
 
 | Endpoint                  | Limit                      |
-| ------------------------- | -------------------------- |
+| --------------------------- | ---------------------------- |
 | `POST /receipts/upload` | 10 requests / hour / user  |
 | `GET /recipes`          | 50 requests / hour / user  |
 | All other endpoints       | 200 requests / hour / user |

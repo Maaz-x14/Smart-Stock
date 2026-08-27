@@ -14,17 +14,22 @@ Before any code: Stage 3 is **not a training pipeline**. It is a production modu
 | Stage | What it does | Where it lives |
 |---|---|---|
 | Stage 1 (OCR) | PaddleOCR setup + validation | Kaggle notebook |
-| Stage 2 (NER) | Fine-tune DistilBERT for token classification | Kaggle notebook |
+| Stage 1.5–1.7 (Row Reconstruction, Prefilter, Row Parser) | Deskew + cluster, drop metadata, header-driven field extraction | `ml_service/ocr/`, `ml_service/parsing/` |
+| Stage 2 (Item Field Extraction) | Regex unit + fuzzy brand lexicon + LLM is_food gate | `ml_service/item_extraction/` |
 | **Stage 3 (Normalization)** | **Rule-based + fuzzy + LLM text normalization** | **`ml_service/normalization/`** |
 | Stage 4 (Expiry) | Shelf-life lookup + confidence scoring | `ml_service/expiry/` |
 
-The distinction matters: Stages 1 and 2 produce model artifacts you save and reload. Stage 3 is pure logic — it runs directly as Python inside the API server. The "build" work for Stage 3 is constructing the `ABBREVIATION_MAP` and `shelf_life_reference` data, then wiring the three-pass pipeline.
+**Updated (v1.1):** "Stage 2 (NER)" — fine-tuned DistilBERT — is retired. See NER_Training.md and ML_Pipeline.md §0/§6 for why. Stage 2 is now Item Field Extraction, and it feeds Stage 3 only for items flagged `is_food = true`; `is_food = false` items skip Stage 3 entirely.
+
+The distinction matters: Stage 1 produces a model artifact (PaddleOCR is pretrained, not trained here, but still a served model). Stages 1.5–2 and Stage 3 are pure logic/API calls — they run directly as Python inside the API server, no model to save or reload. The "build" work for Stage 3 is constructing the `ABBREVIATION_MAP` and `shelf_life_reference` data, then wiring the three-pass pipeline.
 
 ---
 
 ## 1. Overview
 
-Stage 3 takes raw NER output from Stage 2 and converts abbreviated, retailer-specific food tokens into canonical food names that can be matched against the `shelf_life_reference` database table.
+Stage 3 takes item_name output from Stage 2 (Item Field Extraction) — only for items classified `is_food = true` — and converts abbreviated, retailer-specific food tokens into canonical food names that can be matched against the `shelf_life_reference` database table.
+
+**Not yet re-validated** against real Stage 1.5–2 output — this document's content below was tested only against synthetic test cases (`evaluate.py`). Re-validation is a tracked follow-up, not yet done.
 
 ```
 Input  (from Stage 2 NER):   {food_tokens: ["ORG", "STRWBRY"], quantity: "1", unit: "LB", price: "2.99"}

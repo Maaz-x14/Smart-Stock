@@ -1,8 +1,8 @@
 # DB_Schema.md — Database Schema
 ## Smart-Stock PostgreSQL Schema
 
-**Version:** 1.0  
-**Engine:** PostgreSQL 15+  
+**Version:** 1.1 — added `brand` column to `inventory_items` (Stage 2 Item Field Extraction now produces it)
+**Engine:** PostgreSQL 15+
 **ORM:** SQLAlchemy 2.0
 
 ---
@@ -119,6 +119,7 @@ CREATE TABLE inventory_items (
 
     canonical_name          VARCHAR(255) NOT NULL,
     raw_token               VARCHAR(500),
+    brand                   VARCHAR(255),
     category                VARCHAR(100) NOT NULL,
     quantity                NUMERIC(10, 2) NOT NULL DEFAULT 1.0,
     unit                    VARCHAR(50),
@@ -159,9 +160,10 @@ CREATE INDEX idx_inventory_status ON inventory_items(user_id, status);
 | `shelf_life_ref_id` | INTEGER | FK → shelf_life_reference (nullable) |
 | `canonical_name` | VARCHAR(255) | Normalized food name |
 | `raw_token` | VARCHAR(500) | Original receipt text for audit |
+| `brand` | VARCHAR(255) | From Stage 2 fuzzy lexicon match — nullable, many items have no identifiable brand (e.g. "Beef Mince") |
 | `category` | VARCHAR(100) | Food category |
 | `quantity` | NUMERIC(10,2) | Amount |
-| `unit` | VARCHAR(50) | lb, gal, container, etc. |
+| `unit` | VARCHAR(50) | lb, gal, container, ml, kg, etc. |
 | `storage_context` | ENUM | fridge / freezer / pantry |
 | `purchase_date` | DATE | Defaults to today |
 | `predicted_expiry_date` | DATE | From expiry engine |
@@ -169,6 +171,15 @@ CREATE INDEX idx_inventory_status ON inventory_items(user_id, status);
 | `status` | ENUM | ACTIVE / CONSUMED / WASTED |
 | `urgency_tier` | ENUM | Computed column |
 | `source` | VARCHAR(50) | `receipt` or `manual` |
+
+**Note:** price, discount, and total (extracted by Row Parser, ML_Pipeline.md §5) are intentionally **not** persisted — confirmed out of scope for the inventory-tracking use case. Only `quantity` from Row Parser's output reaches this table.
+
+**Not persisted:** `is_food` (Stage 2's LLM gate result) is not stored — items with `is_food = false` never reach `POST /inventory` at all; they're surfaced in the confirmation modal (API_Spec.md §2) and only make it to this table if the user manually overrides and adds them anyway (in which case they're indistinguishable from any other manually-added item).
+
+**Migration required:**
+```sql
+ALTER TABLE inventory_items ADD COLUMN brand VARCHAR(255);
+```
 
 ---
 
