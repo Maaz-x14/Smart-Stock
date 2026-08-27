@@ -1,14 +1,27 @@
 # ML_Pipeline.md — Machine Learning Pipeline
 
-## Smart-Stock: OCR → NER → Normalization → Expiry Prediction
+## Smart-Stock: OCR → Row Reconstruction → Prefilter → Row Parser → Item Field Extraction → Normalization → Expiry Prediction
 
-**Version:** 1.0
+**Version:** 2.0 — restructured after discovering real Pakistani retail receipts use no fixed header format; DistilBERT NER removed in favor of header-driven parsing + lightweight per-field extraction.
+
+---
+
+## 0. Why This Changed (read before the rest of this doc)
+
+The original pipeline (v1.0) assumed a single-line-per-item OCR format (`"STRWBRY 1 LB 2.99"`) and used a fine-tuned DistilBERT NER model to tag FOOD/QTY/UNIT/PRICE tokens within that line.
+
+Testing against real PaddleOCR output on real Pakistani retail receipts (issue #14 onward) found this assumption wrong on two counts:
+
+1. **OCR output is box-per-field, not line-per-item.** Item name, quantity, price, discount, and total arrive as separate unordered text boxes that must be reconstructed into logical rows first (deskew + y-position clustering).
+2. **Receipt header formats vary per store, with no standard.** `Quantity | Price | Discount | Total`, `Qty | Item | Rate | Amount`, `M.R.P | Price | Qty/Wt | Tax(%) | Disc. Amount`, and more — all seen across a handful of real receipts. A model trained on one synthetic format cannot generalize to this variety; a **header-driven parser that reads each receipt's own column layout** does.
+
+Once row parsing extracts quantity/price/discount/total structurally (by matching header position, not by asking a model to infer them), DistilBERT NER's job shrank to almost nothing — the only real judgment left is "is this item text actually food" (a semantic question, better suited to an LLM gate than a small trained classifier with no labeled data) plus unit/brand extraction from the item name string (both regex/lexicon-solvable, no model needed).
+
+**Net result: DistilBERT NER is retired.** See NER_Training.md for the preserved historical record — real training work, just solving a problem that no longer exists in this pipeline.
 
 ---
 
 ## 1. Pipeline Overview
-
-The Smart-Stock ML pipeline transforms a raw receipt image into structured, expiry-annotated inventory items. It consists of four sequential stages:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -21,24 +34,48 @@ The Smart-Stock ML pipeline transforms a raw receipt image into structured, expi
 │  │  STAGE 1: OCR                                            │   │
 │  │  Model: PaddleOCR (pretrained PP-OCRv6)                  │   │
 │  │  Input:  Receipt image (JPEG/PNG/PDF)                    │   │
-│  │  Output: Raw text string                                 │   │
+│  │  Output: Text + bounding boxes per detected text box     │   │
 │  └──────────────────────────┬───────────────────────────────┘   │
 │                             │                                   │
 │                             ▼                                   │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │  STAGE 2: Named Entity Recognition (NER)                 │   │
-│  │  Model: DistilBERT (fine-tuned on annotated receipt NER) │   │
-│  │  Input:  Raw text tokens                                 │   │
-│  │  Output: Tagged entities: FOOD_ITEM, QUANTITY, UNIT,     │   │
-│  │          BRAND, PRICE, OTHER                             │   │
+│  │  STAGE 1.5: Row Reconstruction                           │   │
+│  │  Method: Deskew correction + y-position clustering       │   │
+│  │  Input:  Text boxes (unordered)                          │   │
+│  │  Output: Logical rows (left-to-right ordered)            │   │
 │  └──────────────────────────┬───────────────────────────────┘   │
 │                             │                                   │
 │                             ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 1.6: Prefilter                                    │   │
+│  │  Method: Rule-based keyword/regex drop                   │   │
+│  │  Input:  Logical rows                                    │   │
+│  │  Output: Rows with metadata (GST#, Invoice#, etc) removed│   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│                             ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 1.7: Row Parser                                   │   │
+│  │  Method: Header detection (fuzzy) + x-position column map│   │
+│  │  Input:  Filtered rows                                   │   │
+│  │  Output: {item_name, quantity, price, discount, total}   │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│                             ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 2: Item Field Extraction                          │   │
+│  │  Method: Regex (unit) + fuzzy lexicon (brand)            │   │
+│  │          + LLM gate (is_food)                            │   │
+│  │  Input:  item_name string                                │   │
+│  │  Output: {is_food, brand, unit}                          │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                     is_food=false → surfaced to user, stops here│
+│                     is_food=true  ▼                             │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  STAGE 3: Normalization                                  │   │
-│  │  Method: Fuzzy match + lookup table + LLM cleaning       │   │
-│  │  Input:  Raw NER entities                                │   │
-│  │  Output: Canonical item records with qty/unit parsed     │   │
+│  │  Method: Lookup → Fuzzy match → LLM canonical naming     │   │
+│  │  Input:  item_name (is_food=true only)                   │   │
+│  │  Output: Canonical item records                          │   │
 │  └──────────────────────────┬───────────────────────────────┘   │
 │                             │                                   │
 │                             ▼                                   │
@@ -54,45 +91,68 @@ The Smart-Stock ML pipeline transforms a raw receipt image into structured, expi
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+<img src="data/smart_stock_pipeline.svg" alt="Pipeline" width="500" />
+
 ---
 
 ## 2. Stage 1: OCR — Text Extraction
 
+Unchanged from v1.0.
+
 ### Model
 
-**PaddleOCR** (PP-OCRv6, pretrained — no fine-tuning) — small det/rec models, doc-orientation/unwarping/textline-orientation disabled for speed. Ships its own integrated text detector, so no separate line-segmentation stage is needed.
+**PaddleOCR** (PP-OCRv6, pretrained — no fine-tuning) — small det/rec models, doc-orientation/unwarping/textline-orientation disabled for speed.
 
-PaddleOCR's CNN-based detector+recognizer (DBNet + CRNN/SVTR) proved a better structural fit for CPU-served receipt OCR than TrOCR's transformer decoder — beat a 2-month fine-tuned TrOCR on both accuracy and latency (~5-6s/receipt vs ~480s/receipt) without any fine-tuning. See OCR_Training.md Decision Log for the full comparison.
-
-### Input Preprocessing
-
-Handled internally by PaddleOCR's pipeline (detection runs on the full image directly — no separate deskew/binarize/resize/line-crop stage required, unlike the original TrOCR approach).
+PaddleOCR's CNN-based detector+recognizer (DBNet + CRNN/SVTR) beat a 2-month fine-tuned TrOCR on both accuracy and latency (~5-6s/receipt vs ~480s/receipt) without any fine-tuning. See OCR_Training.md for the full comparison.
 
 ### Output
 
 ```python
 result = ocr.predict(image_path)
 res = result[0]
-texts  = res["rec_texts"]   # list of recognized text lines
-scores = res["rec_scores"]  # confidence per line
+texts  = res["rec_texts"]   # recognized text per box
+scores = res["rec_scores"]  # confidence per box
+boxes  = res["rec_boxes"]   # [x1, y1, x2, y2] per box — now extracted (was previously unused)
+polys  = res["rec_polys"]   # 4-point polygon per box — used for skew estimation
 ```
 
-### OCR Post-processing
+**Note:** `rec_boxes`/`rec_polys` were always present in PaddleOCR's result dict but not extracted in v1.0 — Stage 1.5 needed them, so extraction was added. No re-run of detection required.
 
-- Price line filtering: remove lines matching pattern `r'^\d+\.\d{2}$'` (price-only lines)
-- Header/footer stripping: remove store name, date, total, tax lines using keyword heuristics (GST, Invoice, Transaction, POS, Customer, CNIC, Payments, Total, Discount, Rounding, Tax Breakup — planned pre-filter before Stage 2 NER)
+Module: `ml_service/ocr/model.py`
 
-## 3. Stage 2: NER — Entity Extraction
+---
 
-### Model
+## 3. Stage 1.5: Row Reconstruction
 
-**DistilBERT** (`distilbert-base-uncased`), fine-tuned for token classification on an annotated receipt NER corpus. F1 0.907 (test), exceeds target.
+**New in v2.0.** Solves: one text box ≠ one logical receipt row. Item name, qty, price, discount, and total arrive as separate unordered boxes.
 
-**Locked in.** Benchmarked against BERT-base, RoBERTa-base, ModernBERT-base (same `ner_splits`, 15 epochs) — DistilBERT won on both F1 (0.9156) and CPU latency (28.75ms). See NER_Training.md §23 for full comparison.
+### Method
 
-### Pre-filter (rule-based, before NER)
+1. Compute y-center and height per box from `rec_boxes`.
+2. Estimate the receipt's skew angle from `rec_polys` (median angle of each box's top edge, via `arctan2`) — real photographed receipts are rarely perfectly flat.
+3. Correct each box's y-center for skew-induced drift: `y_corrected = y_center - slope * x_center`.
+4. Sort boxes by corrected y, cluster into rows where consecutive y-differences fall under a tolerance (proportional to box height).
+5. Within each row, sort left-to-right by x.
 
-Runs on OCR output lines before they reach the NER model. Drops lines that are 100% certainly not items — pure noise, no food-semantic judgment involved (that judgment is NER + Stage 3's job, not this filter's). Module: `ml_service/ner/prefilter.py`.
+```python
+def cluster_rows_deskewed(texts, scores, boxes, polys, y_tol_ratio=0.3):
+    # estimate skew angle, correct y-positions, cluster into rows
+    ...
+```
+
+Module: `ml_service/ocr/row_reconstruction.py`
+
+**Validated** against 4 real receipts — correctly reconstructs rows including cases with meaningful skew (verified: a row split by drift, e.g. "Total Items/Quantity" separated from its value "3/67.00", merges correctly after deskew correction).
+
+---
+
+## 4. Stage 1.6: Prefilter
+
+**Relocated from `ml_service/ner/` to `ml_service/parsing/`** — was never NER-specific logic, just ran before NER in v1.0.
+
+### Method
+
+Rule-based keyword/regex drop. Runs on reconstructed rows (joined into one line for matching), before Row Parser sees them.
 
 ```python
 import re
@@ -112,58 +172,96 @@ SEPARATOR_RE    = re.compile(r"^[-=*_]{3,}$")
 PERCENT_ONLY_RE = re.compile(r"^\d{1,2}(\.\d+)?\s*%$")
 BARCODE_RE      = re.compile(r"^\d{8,}$")
 
-def should_drop_line(line: str) -> bool:
-    stripped = line.strip()
-
-    if len(stripped) < 3:
-        return True
-    if any(kw in stripped.upper() for kw in DROP_KEYWORDS):
-        return True
-    if "@" in stripped or "www." in stripped.lower() or "http" in stripped.lower() or ".com" in stripped.lower():
-        return True
-    for pattern in (PRICE_ONLY_RE, PHONE_RE, DATE_RE, TIME_RE, SEPARATOR_RE, PERCENT_ONLY_RE, BARCODE_RE):
-        if pattern.match(stripped):
-            return True
-    return False
+def should_drop_row(row: list[dict]) -> bool:
+    return should_drop_line(" ".join(item["text"] for item in row))
 ```
 
-**Scope:** drops standalone price/total/date/contact/barcode lines only — never strips a price token off an item line (`"STRWBRY 1 LB 2.99"` stays whole; NER still tags `B-PRICE` on it). Not yet validated against real PaddleOCR receipt output — risk noted in NER_Training.md-adjacent testing: substring keyword match on "CASH"/"TOTAL" could false-positive on a product name that happens to contain those words.
+**Important interaction with Row Parser:** the header row itself (e.g. `"Discount | Total"`) is excluded from prefilter checks — Row Parser detects and consumes the header row before prefilter runs on the remaining rows, otherwise the header would be wrongly dropped (its own keywords overlap with `DROP_KEYWORDS`).
 
-### Entity Labels (BIO tagging scheme)
+Module: `ml_service/parsing/prefilter.py`
 
-| Label       | Meaning                | Example                    |
-| ----------- | ---------------------- | -------------------------- |
-| `B-FOOD`  | Beginning of food item | `ORG` in `ORG STRWBRY` |
-| `I-FOOD`  | Inside food item       | `STRWBRY`                |
-| `B-QTY`   | Quantity               | `1`                      |
-| `B-UNIT`  | Unit of measure        | `LB`, `GAL`, `CT`    |
-| `B-BRAND` | Brand name             | `ORGANIC VALLEY`         |
-| `B-PRICE` | Price token            | `2.99`                   |
-| `O`       | Outside / irrelevant   | Store name, date, etc.     |
-
-### Input
-
-Tokenized receipt text lines, after OCR post-processing **and** the rule-based pre-filter (see below — drops pure-noise lines before NER ever sees them). Lines are processed independently. Max sequence length: 128 tokens.
-
-### Output
-
-Token-level entity tags. Post-processing groups consecutive `B-FOOD` / `I-FOOD` tags into entity spans:
-
-```
-Input:  ["ORG", "STRWBRY", "1", "LB", "2.99"]
-Output: [B-FOOD, I-FOOD, B-QTY, B-UNIT, B-PRICE]
-
-Grouped: {
-  food_tokens: ["ORG", "STRWBRY"],
-  quantity: "1",
-  unit: "LB",
-  price: "2.99"
-}
-```
+**Known gap:** doesn't catch every leaked non-item row (e.g. "Ex1. Amt", bank names like "HBL") — low priority, doesn't corrupt item data, just leaves a few harmless stray entries.
 
 ---
 
-## 4. Stage 3: Normalization
+## 5. Stage 1.7: Row Parser
+
+**New in v2.0.** Solves: no two Pakistani retail receipts share a header format. Real headers seen: `Quantity | Price | Discount | Total`, `Qty | Item | Rate | Amount`, `Quantity Price | Discount | Total` (merged), `M.R.P | Price | Qty/Wt | Tax(%) | Disc. Amount`. Position-only heuristics don't generalize across this variety.
+
+### Method
+
+1. **Header detection:** scan rows (up to the "Sales Items" marker) for fuzzy matches against column synonym lists (`QUANTITY`, `PRICE`, `TOTAL`, `DISCOUNT`, `ITEM`). Strict `ratio` match first; falls back to `partial_ratio` only when strict match fails, to catch merged header tokens (`"Quantity Price"`) without over-matching plain single-word headers (fixes a real bug where `"Discount"` alone was fuzzy-matching `"Total"` too).
+2. **Column mapping:** record each header token's x-position → build a per-receipt column schema.
+3. **Field extraction:** for each data row, map each token to its nearest header column by x-distance; numeric tokens get cleaned (strips OCR noise like stray carets, fixes multi-dot decimals) before parsing.
+4. **Fallback (no header detected):** leading non-numeric token = item name; rightmost numeric token = total (receipts consistently place total last); remaining numbers split by magnitude/integer heuristics (low_confidence_parse flagged).
+5. **Split-row merge:** item name and its numeric fields sometimes print on separate physical receipt lines, sometimes on the same line — a merge pass combines a name-only row with an immediately following numbers-only row into one item.
+
+```python
+def parse_receipt_rows(rows) -> list[dict]:
+    # returns [{item_name, quantity, price, discount, total, low_confidence_parse}, ...]
+```
+
+Module: `ml_service/parsing/row_parser.py`
+
+**Validated** against 4 real receipts — output matches ground truth exactly on all fields after fixing: header-scan window (was too small, missed headers past row 10), merged-column double-write bug, and OCR noise in numeric tokens (`"11^9.00"` → 119.00, `"Rs7.948.80"` → 7948.80).
+
+**Known unsupported format (issue #23):** multi-line headers with a `Tax (%)` column and 6 fields per item, seen on one receipt (item code + name fused, sub-values merged in one OCR token like `"0.00(0) 3.00"`). Deferred — needs its own parsing path, not a patch to the current header logic.
+
+**Note:** `quantity` from this stage is the field the rest of the pipeline uses (`DB_Schema.md inventory_items.quantity`). `price`, `discount`, `total` are extracted but **not persisted** — confirmed unused per `DB_Schema.md` (no price/discount/total columns on `inventory_items`).
+
+---
+
+## 6. Stage 2: Item Field Extraction
+
+**Replaces the retired DistilBERT NER stage.** Operates on the `item_name` string that Row Parser produced. Output contract: `{is_food: bool, brand: str | None, unit: str | None}`.
+
+### Why not a trained model
+
+- **Unit** is a deterministic regex-extractable pattern embedded in item_name (`"Pakola MIk Uht 250M1"` → unit=ml, `"Ponam Sugar 1kg"` → unit=kg), including known OCR corruption patterns (`ml`→`M1`, `l`→`1`). No training data needed.
+- **Brand** is a leading-token fuzzy match against a curated lexicon, reusing the same `rapidfuzz` infrastructure as Stage 3 Pass 2. No labeled training data exists for this; a lexicon is directly inspectable and extendable as new brands appear, unlike a trained classifier.
+- **is_food** is the one genuinely semantic judgment — but there's no labeled dataset for this specific binary task (the retired DistilBERT was trained for a different task shape: full-line BIO tagging, not isolated item-name classification), and building one would be expensive with thin coverage across unseen store types. An LLM gate needs no training data and generalizes to novel item text (pharmacy items, cosmetics, random SKUs) far better than a small classifier trained on a handful of labeled examples would.
+
+### Unit Extraction
+
+```python
+UNIT_PATTERNS = {
+    r"(\d+\.?\d*)\s*(ml|m1)\b": "ml",   # M1 = common OCR misread of ml
+    r"(\d+\.?\d*)\s*(kg)\b":    "kg",
+    r"(\d+\.?\d*)\s*(g|gm)\b":  "g",
+    r"(\d+\.?\d*)\s*(lb|lbs)\b":"lb",
+    ...
+}
+```
+
+Module: `ml_service/item_extraction/unit_extractor.py`
+
+### Brand Extraction
+
+Fuzzy match leading token(s) of item_name against a curated brand lexicon (same `rapidfuzz` approach as Stage 3 Pass 2). Not every item has a brand (e.g. "Beef Mince") — no match is a valid, expected outcome, not a failure.
+
+Module: `ml_service/item_extraction/brand_matcher.py`
+
+### is_food Gate
+
+LLM call, binary classification:
+
+```
+Prompt: "Is '{item_name}' a food or grocery item? Reply yes or no."
+```
+
+Module: `ml_service/item_extraction/food_classifier.py`
+
+**Distinct from Stage 3 Pass 3's LLM call** — Stage 2 asks "is this food at all", Stage 3 Pass 3 asks "what's the canonical name for this (already-confirmed) food item". Different questions; both needed. `is_food = false` skips Stage 3 and Stage 4 entirely — no shelf-life to predict for a non-food item — and the item is surfaced to the user in the confirmation modal flagged as excluded, rather than silently dropped.
+
+Module: `ml_service/item_extraction/extractor.py` orchestrates all three and returns the combined `{is_food, brand, unit}` result.
+
+**Open consideration, not yet decided:** Stage 2's is_food call and Stage 3 Pass 3's canonical-naming call could be merged into one LLM round-trip for is_food=true items. Not implemented — keeping them separate is simpler to reason about and debug first.
+
+---
+
+## 7. Stage 3: Normalization
+
+Mechanism unchanged from v1.0 — still a three-pass approach. **Now only runs for items where Stage 2 returned `is_food = true`.**
 
 ### Goal
 
@@ -174,206 +272,120 @@ Convert raw, abbreviated, retailer-specific food tokens into canonical food name
 ### Method: Three-Pass Approach
 
 **Pass 1 — Direct Lookup**
-Check a curated abbreviation dictionary (manually built from common retail receipt shortcodes):
-
-```python
-ABBREVIATION_MAP = {
-    "STRWBRY": "Strawberries",
-    "MLKWHL": "Whole Milk",
-    "CHKN BRST": "Chicken Breast",
-    "GRK YGRT": "Greek Yogurt",
-    ...
-}
-```
-
-~800 entries covering the most common grocery items. This handles ~65% of real-world cases.
+Curated abbreviation dictionary (~800 entries), handles ~65% of real-world cases.
 
 **Pass 2 — Fuzzy Matching**
-If Pass 1 misses, use `rapidfuzz` library to fuzzy-match against all `canonical_name` values in `shelf_life_reference`:
-
-```python
-from rapidfuzz import process, fuzz
-
-match, score, _ = process.extractOne(
-    raw_token,
-    canonical_names_list,
-    scorer=fuzz.token_sort_ratio
-)
-if score >= 80:
-    return match
-```
-
-Handles misspellings, partial matches, and ordering variations.
+`rapidfuzz` fuzzy-match against `shelf_life_reference.canonical_name` values, threshold ≥ 80.
 
 **Pass 3 — LLM Cleaning (Fallback)**
-For tokens that pass 1 and 2 cannot resolve (score < 80), send to a lightweight LLM (Ollama `llama3.2:1b` running locally, or Claude API call):
+For tokens Pass 1 and 2 cannot resolve, sends to LLM for canonical name resolution. Cached in `normalization_cache`.
 
-```
-Prompt: "This is a line item from a US grocery store receipt: '{raw_token}'.
-What common food item does this refer to? Reply with just the canonical food name, nothing else."
-```
+**Untested against real pipeline output as of this writing** — was validated only against synthetic test cases (`evaluate.py`). Should be re-validated now that Stage 1.5–2 produce real structured input.
 
-Results are cached in a `normalization_cache` table to avoid redundant LLM calls.
+### Unit / Category
 
-### Unit Normalization
-
-```python
-UNIT_MAP = {
-    "LB": "lb", "LBS": "lb",
-    "OZ": "oz",
-    "GAL": "gal", "GL": "gal",
-    "CT": "count", "PK": "pack",
-    "EA": "each",
-}
-```
-
-### Category Assignment
-
-After canonical name is resolved, look up `category` from `shelf_life_reference` by `canonical_name`. If not found, use a simple keyword classifier:
-
-```python
-CATEGORY_KEYWORDS = {
-    "Produce": ["berries", "apple", "lettuce", "tomato", ...],
-    "Dairy":   ["milk", "cheese", "yogurt", "butter", ...],
-    "Meat":    ["chicken", "beef", "pork", "salmon", ...],
-    "Pantry":  ["bread", "pasta", "rice", "sauce", ...],
-    "Frozen":  ["frozen", "ice cream", ...],
-}
-```
+Unchanged from v1.0 — see original `UNIT_MAP` and `CATEGORY_KEYWORDS` in `ml_service/normalization/unit_normalizer.py` and `category_classifier.py`.
 
 ---
 
-## 5. Stage 4: Expiry Prediction
+## 8. Stage 4: Expiry Prediction
 
-### Method
+Unchanged from v1.0. Rule-based lookup from `shelf_life_reference` + confidence scoring. See `ml_service/expiry/predictor.py` and Expiry_Training.md.
 
-Hybrid: rule-based lookup from `shelf_life_reference` + confidence scoring based on match quality.
-
-### Algorithm
-
-```python
-def predict_expiry(
-    canonical_name: str,
-    storage_context: str,
-    purchase_date: date,
-    normalization_confidence: float
-) -> tuple[date, float]:
-
-    # 1. Look up shelf life reference
-    ref = db.query(ShelfLifeReference).filter_by(
-        canonical_name=canonical_name,
-        storage_context=storage_context
-    ).first()
-
-    if ref:
-        shelf_life_days = ref.shelf_life_days_avg
-        base_confidence = 0.95
-    else:
-        # 2. Category-level fallback
-        ref = db.query(ShelfLifeReference).filter_by(
-            category=item_category,
-            storage_context=storage_context
-        ).order_by(ShelfLifeReference.shelf_life_days_avg).first()
-        shelf_life_days = ref.shelf_life_days_avg if ref else 7
-        base_confidence = 0.70
-
-    # 3. Adjust confidence by normalization quality
-    final_confidence = base_confidence * normalization_confidence
-
-    predicted_expiry = purchase_date + timedelta(days=shelf_life_days)
-    return predicted_expiry, round(final_confidence, 3)
-```
-
-### Confidence Score Interpretation
-
-| Range        | Meaning                                           |
-| ------------ | ------------------------------------------------- |
-| 0.90 – 1.00 | High confidence: exact match in reference table   |
-| 0.70 – 0.89 | Medium: category-level fallback or fuzzy match    |
-| 0.50 – 0.69 | Low: LLM normalization used, or no category match |
-| < 0.50       | Very low: flag for user review                    |
-
-Items with confidence < 0.60 are surfaced in the confirmation modal with a warning indicator, prompting the user to verify the predicted expiry date manually.
+**Untested against real pipeline output as of this writing** — same status as Stage 3.
 
 ---
 
-## 6. Pipeline Execution
+## 9. Pipeline Execution
 
 ### Inference Code Structure
 
 ```
 ml_service/
-├── pipeline.py          # Orchestrates all 4 stages
+├── pipeline.py               # Orchestrates all stages (currently empty — rewiring in progress)
 ├── ocr/
-│   ├── model.py         # PaddleOCR loader + inference
-│   └── preprocessor.py  # Optional receipt cleanup/helpers
-├── ner/
-│   ├── prefilter.py     # Rule-based noise-line drop, before NER
-│   ├── model.py         # DistilBERT loader + inference
-│   └── entity_parser.py # BIO tag grouping
+│   ├── model.py              # PaddleOCR loader + inference
+│   └── row_reconstruction.py # Deskew + y-clustering (Stage 1.5)
+├── parsing/
+│   ├── prefilter.py          # Rule-based metadata-row drop (Stage 1.6)
+│   └── row_parser.py         # Header detection + field extraction (Stage 1.7)
+├── item_extraction/
+│   ├── unit_extractor.py     # Regex unit parsing
+│   ├── brand_matcher.py      # Fuzzy lexicon match
+│   ├── food_classifier.py    # LLM is_food gate
+│   └── extractor.py          # Orchestrates the above (Stage 2)
 ├── normalization/
 │   ├── abbreviation_map.py
 │   ├── fuzzy_matcher.py
-│   └── llm_fallback.py
+│   └── llm_fallback.py       # Stage 3 Pass 3 — distinct from Stage 2's LLM call
 ├── expiry/
-│   └── predictor.py     # Shelf-life lookup + confidence
-└── models/              # Serialized model weights
-    ├── paddleocr        # PaddleOCR's own runtime — not ONNX
-    └── distilbert_ner.onnx
+│   └── predictor.py          # Shelf-life lookup + confidence
+├── ner/
+│   └── archive/
+│       └── ner-training.ipynb  # Historical record only — not imported anywhere
+└── models/
+    └── trocr-smart-stock/    # Retired TrOCR weights (superseded by PaddleOCR, see OCR_Training.md) — cleanup decision separate from this restructure
 ```
 
 ### Latency Budget (per receipt, CPU inference)
 
-**Note:** Total budget below is stale — OCR alone (~5-6s) already exceeds the original <3000ms total target set when OCR was assumed to be TrOCR+ONNX at <1500ms. Revisit this budget once Stage 2 NER model is locked in and Stage 3/4 are validated against real pipeline output.
+**Note:** not yet re-measured end-to-end since the restructure. NER's ONNX latency line is removed (no model to run); item field extraction's latency (regex + lexicon + LLM call) is not yet benchmarked.
 
-| Stage                 | Target Latency     |
-| --------------------- | ------------------ |
-| Image preprocessing   | N/A — handled internally by PaddleOCR |
-| OCR (PaddleOCR)        | ~5-6s (measured, pretrained, not yet latency-optimized) |
-| NER (DistilBERT ONNX) | < 500ms            |
-| Normalization         | < 300ms            |
-| Expiry prediction     | < 100ms            |
-| **Total**       | **~6-7s (target needs revision, see note above)** |
+| Stage                          | Target Latency                                        |
+| ------------------------------- | ------------------------------------------------------- |
+| Image preprocessing            | N/A — handled internally by PaddleOCR                  |
+| OCR (PaddleOCR)                 | ~5-6s (measured)                                        |
+| Row reconstruction              | Not yet measured — expected negligible (pure Python, no model) |
+| Prefilter + Row Parser          | Not yet measured — expected negligible                  |
+| Item Field Extraction           | Not yet measured — LLM call (is_food) likely dominates  |
+| Normalization                   | < 300ms (target, unvalidated against real data)         |
+| Expiry prediction               | < 100ms (target, unvalidated against real data)         |
+| **Total**                       | **Needs full re-measurement — total pipeline not yet run end-to-end on real data** |
 
 ---
 
-## 7. Evaluation Metrics
+## 10. Evaluation Metrics
 
 ### OCR
 
-CER/WER targets below were set for a fine-tuned model (TrOCR) with a held-out labeled test set. PaddleOCR is used pretrained — no fine-tuning eval loop produces these numbers today. Real-receipt accuracy was validated qualitatively instead (correct item/price/qty extraction across test receipts). A formal CER/WER benchmark against annotated real receipts is still open — see OCR_Training.md.
+Unchanged from v1.0 — see original doc content. CER/WER not measured (pretrained, no labeled eval set); qualitative validation only.
 
-| Metric                     | Definition                  | Target | Status |
-| -------------------------- | --------------------------- | ------ | ------ |
-| Character Error Rate (CER) | Edit distance / total chars | ≤ 5%  | Not measured for PaddleOCR — no labeled eval set yet |
-| Word Error Rate (WER)      | Word-level edit distance    | ≤ 10% | Not measured for PaddleOCR — no labeled eval set yet |
-| Line Detection Rate        | % of receipt lines captured | ≥ 95% | Not formally measured — qualitatively all lines captured on test receipts |
+### Row Parser (new)
 
-### NER
+| Metric                  | Definition                                      | Status |
+| ------------------------ | ------------------------------------------------ | ------ |
+| Field extraction accuracy | % of quantity/price/discount/total correctly extracted vs. ground truth | Validated on 4 receipts, 100% match — not yet tested at scale |
+| Header detection rate    | % of receipts where a header row is correctly found | Not formally measured beyond the 4-receipt sample |
 
-| Metric          | Definition                 | Target  |
-| --------------- | -------------------------- | ------- |
-| Entity-level F1 | F1 over FOOD_ITEM entities | ≥ 0.88 |
-| Precision       | TP / (TP + FP)             | ≥ 0.90 |
-| Recall          | TP / (TP + FN)             | ≥ 0.86 |
+### Item Field Extraction (new, replaces NER metrics)
+
+| Metric              | Definition                          | Status |
+| -------------------- | ------------------------------------ | ------ |
+| is_food accuracy     | LLM gate correctness vs. labeled sample | Not yet measured — no labeled sample built |
+| Unit extraction rate | % of items with a unit successfully extracted | Not yet measured |
+| Brand match rate     | % of items with a brand successfully matched | Not yet measured |
+
+**Retired:** NER Entity-level F1/Precision/Recall metrics — no model, nothing to score. Historical DistilBERT results (F1 0.907) preserved in NER_Training.md for the record.
 
 ### Normalization
 
 | Metric               | Definition                     | Target |
-| -------------------- | ------------------------------ | ------ |
-| Canonical Match Rate | % items resolved by Pass 1 + 2 | ≥ 80% |
-| LLM Fallback Rate    | % items needing Pass 3         | ≤ 20% |
+| ---------------------- | -------------------------------- | -------- |
+| Canonical Match Rate | % items resolved by Pass 1 + 2 | ≥ 80%  |
+| LLM Fallback Rate    | % items needing Pass 3         | ≤ 20%  |
 
 ### Expiry Prediction
 
 | Metric                   | Definition                            | Target      |
-| ------------------------ | ------------------------------------- | ----------- |
+| -------------------------- | ---------------------------------------- | ------------- |
 | MAE (days)               | Mean absolute error vs. actual expiry | ≤ 1.5 days |
 | High-confidence accuracy | Accuracy when confidence ≥ 0.85      | ≥ 92%      |
 
 ### End-to-End
 
 | Metric              | Definition                                           | Target |
-| ------------------- | ---------------------------------------------------- | ------ |
-| Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85% |
+| --------------------- | ------------------------------------------------------- | -------- |
+| Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85%  |
 | Processing Time     | Wall clock, full pipeline, CPU                       | < 10s  |
+
+**Not yet measured** — blocked on full pipeline wiring (`pipeline.py` currently empty) and re-validation of Stage 3/4 against real Stage 1.5–2 output.

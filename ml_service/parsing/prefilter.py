@@ -15,6 +15,12 @@ SEPARATOR_RE    = re.compile(r"^[-=*_]{3,}$")
 PERCENT_ONLY_RE = re.compile(r"^\d{1,2}(\.\d+)?\s*%$")
 BARCODE_RE      = re.compile(r"^\d{8,}$")
 
+def row_to_line(row: list[dict]) -> str:
+    return " ".join(item["text"] for item in row)
+
+def should_drop_row(row: list[dict]) -> bool:
+    return should_drop_line(row_to_line(row))
+
 def should_drop_line(line: str) -> bool:
     stripped = line.strip()
 

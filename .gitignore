@@ -45,3 +45,6 @@ pip-wheel-metadata/
 
 kaggle.json
 ml_service/models/
+
+
+/inference

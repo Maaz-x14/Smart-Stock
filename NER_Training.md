@@ -1,3 +1,10 @@
+> **Not USED — Not part of the current pipeline.**
+> This fine-tuned DistilBERT model is no longer used by Smart-Stock. It was trained to tag FOOD/QTY/UNIT/PRICE entities across single-line receipt text — a task that no longer exists once Stage 1.7 (Row Parser) began extracting quantity/price/discount/total structurally via detected header columns, and Stage 2 (Item Field Extraction) took over is_food/brand/unit via regex + fuzzy lexicon + LLM gate instead of a trained classifier. See ML_Pipeline.md §0 for the full rationale and Architecture.md for the current pipeline.
+>
+> This document is kept because it documents real training work (dataset construction, hyperparameter search, model comparison against BERT-base/RoBERTa-base/ModernBERT-base) that may be useful reference for future model-training efforts on this or other projects.
+
+---
+
 # NER_Training.md — DistilBERT NER Fine-Tuning Guide
 ## Smart-Stock: Stage 2 — Named Entity Recognition
 
