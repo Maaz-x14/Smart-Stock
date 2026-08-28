@@ -331,16 +331,16 @@ ml_service/
 
 **Note:** not yet re-measured end-to-end since the restructure. NER's ONNX latency line is removed (no model to run); item field extraction's latency (regex + lexicon + LLM call) is not yet benchmarked.
 
-| Stage                          | Target Latency                                        |
-| ------------------------------- | ------------------------------------------------------- |
-| Image preprocessing            | N/A — handled internally by PaddleOCR                  |
-| OCR (PaddleOCR)                 | ~5-6s (measured)                                        |
-| Row reconstruction              | Not yet measured — expected negligible (pure Python, no model) |
-| Prefilter + Row Parser          | Not yet measured — expected negligible                  |
-| Item Field Extraction           | Not yet measured — LLM call (is_food) likely dominates  |
-| Normalization                   | < 300ms (target, unvalidated against real data)         |
-| Expiry prediction               | < 100ms (target, unvalidated against real data)         |
-| **Total**                       | **Needs full re-measurement — total pipeline not yet run end-to-end on real data** |
+| Stage                  | Target Latency                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| Image preprocessing    | N/A — handled internally by PaddleOCR                                                    |
+| OCR (PaddleOCR)        | ~5-6s (measured)                                                                          |
+| Row reconstruction     | Not yet measured — expected negligible (pure Python, no model)                           |
+| Prefilter + Row Parser | Not yet measured — expected negligible                                                   |
+| Item Field Extraction  | Not yet measured — LLM call (is_food) likely dominates                                   |
+| Normalization          | < 300ms (target, unvalidated against real data)                                           |
+| Expiry prediction      | < 100ms (target, unvalidated against real data)                                           |
+| **Total**        | **Needs full re-measurement — total pipeline not yet run end-to-end on real data** |
 
 ---
 
@@ -352,40 +352,40 @@ Unchanged from v1.0 — see original doc content. CER/WER not measured (pretrain
 
 ### Row Parser (new)
 
-| Metric                  | Definition                                      | Status |
-| ------------------------ | ------------------------------------------------ | ------ |
+| Metric                    | Definition                                                              | Status                                                         |
+| ------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Field extraction accuracy | % of quantity/price/discount/total correctly extracted vs. ground truth | Validated on 4 receipts, 100% match — not yet tested at scale |
-| Header detection rate    | % of receipts where a header row is correctly found | Not formally measured beyond the 4-receipt sample |
+| Header detection rate     | % of receipts where a header row is correctly found                     | Not formally measured beyond the 4-receipt sample              |
 
 ### Item Field Extraction (new, replaces NER metrics)
 
-| Metric              | Definition                          | Status |
-| -------------------- | ------------------------------------ | ------ |
-| is_food accuracy     | LLM gate correctness vs. labeled sample | Not yet measured — no labeled sample built |
-| Unit extraction rate | % of items with a unit successfully extracted | Not yet measured |
-| Brand match rate     | % of items with a brand successfully matched | Not yet measured |
+| Metric               | Definition                                    | Status                                      |
+| -------------------- | --------------------------------------------- | ------------------------------------------- |
+| is_food accuracy     | LLM gate correctness vs. labeled sample       | Not yet measured — no labeled sample built |
+| Unit extraction rate | % of items with a unit successfully extracted | Not yet measured                            |
+| Brand match rate     | % of items with a brand successfully matched  | Not yet measured                            |
 
 **Retired:** NER Entity-level F1/Precision/Recall metrics — no model, nothing to score. Historical DistilBERT results (F1 0.907) preserved in NER_Training.md for the record.
 
 ### Normalization
 
 | Metric               | Definition                     | Target |
-| ---------------------- | -------------------------------- | -------- |
-| Canonical Match Rate | % items resolved by Pass 1 + 2 | ≥ 80%  |
-| LLM Fallback Rate    | % items needing Pass 3         | ≤ 20%  |
+| -------------------- | ------------------------------ | ------ |
+| Canonical Match Rate | % items resolved by Pass 1 + 2 | ≥ 80% |
+| LLM Fallback Rate    | % items needing Pass 3         | ≤ 20% |
 
 ### Expiry Prediction
 
 | Metric                   | Definition                            | Target      |
-| -------------------------- | ---------------------------------------- | ------------- |
+| ------------------------ | ------------------------------------- | ----------- |
 | MAE (days)               | Mean absolute error vs. actual expiry | ≤ 1.5 days |
 | High-confidence accuracy | Accuracy when confidence ≥ 0.85      | ≥ 92%      |
 
 ### End-to-End
 
 | Metric              | Definition                                           | Target |
-| --------------------- | ------------------------------------------------------- | -------- |
-| Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85%  |
+| ------------------- | ---------------------------------------------------- | ------ |
+| Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85% |
 | Processing Time     | Wall clock, full pipeline, CPU                       | < 10s  |
 
 **Not yet measured** — blocked on full pipeline wiring (`pipeline.py` currently empty) and re-validation of Stage 3/4 against real Stage 1.5–2 output.
