@@ -1,6 +1,6 @@
 import re
 from rapidfuzz import fuzz
-from ml_service.ner.prefilter import should_drop_row
+from ml_service.parsing.prefilter import should_drop_row
 
 COLUMN_SYNONYMS = {
     "QUANTITY": ["qty", "quantity", "qty/wt"],
