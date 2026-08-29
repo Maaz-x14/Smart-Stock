@@ -1,8 +1,9 @@
 # Normalization_Training.md — Stage 3 Normalization Guide
+
 ## Smart-Stock: Stage 3 — Food Name Normalization
 
-**Version:** 1.0 (Initial build — three-pass pipeline, Groq LLM fallback)  
-**Environment:** Local Python / FastAPI container (no GPU required)  
+**Version:** 1.0 (Initial build — three-pass pipeline, Groq LLM fallback)
+**Environment:** Local Python / FastAPI container (no GPU required)
 **Method:** Abbreviation lookup → Fuzzy match → Groq LLM fallback
 
 ---
@@ -11,13 +12,13 @@
 
 Before any code: Stage 3 is **not a training pipeline**. It is a production module that runs at inference time inside `ml_service/`. There is no GPU, no dataset to download, no Trainer, no checkpoint to resume.
 
-| Stage | What it does | Where it lives |
-|---|---|---|
-| Stage 1 (OCR) | PaddleOCR setup + validation | Kaggle notebook |
+| Stage                                                      | What it does                                                    | Where it lives                               |
+| ---------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------- |
+| Stage 1 (OCR)                                              | PaddleOCR setup + validation                                    | Kaggle notebook                              |
 | Stage 1.5–1.7 (Row Reconstruction, Prefilter, Row Parser) | Deskew + cluster, drop metadata, header-driven field extraction | `ml_service/ocr/`, `ml_service/parsing/` |
-| Stage 2 (Item Field Extraction) | Regex unit + fuzzy brand lexicon + LLM is_food gate | `ml_service/item_extraction/` |
-| **Stage 3 (Normalization)** | **Rule-based + fuzzy + LLM text normalization** | **`ml_service/normalization/`** |
-| Stage 4 (Expiry) | Shelf-life lookup + confidence scoring | `ml_service/expiry/` |
+| Stage 2 (Item Field Extraction)                            | Regex unit + fuzzy brand lexicon + LLM is_food gate             | `ml_service/item_extraction/`              |
+| **Stage 3 (Normalization)**                          | **Rule-based + fuzzy + LLM text normalization**           | **`ml_service/normalization/`**      |
+| Stage 4 (Expiry)                                           | Shelf-life lookup + confidence scoring                          | `ml_service/expiry/`                       |
 
 **Updated (v1.1):** "Stage 2 (NER)" — fine-tuned DistilBERT — is retired. See NER_Training.md and ML_Pipeline.md §0/§6 for why. Stage 2 is now Item Field Extraction, and it feeds Stage 3 only for items flagged `is_food = true`; `is_food = false` items skip Stage 3 entirely.
 
@@ -40,15 +41,15 @@ Output (to Stage 4 Expiry):  {canonical_name: "Strawberries", quantity: 1.0, uni
 
 Receipt printers truncate item names to fit on thermal paper. The same product appears differently across retailers and countries:
 
-| Raw receipt token | What it actually is |
-|---|---|
-| `ORG STRWBRY 1LB` | Organic Strawberries |
-| `CHKN BRST BNLS` | Boneless Chicken Breast |
-| `MLK FL CRM 1GL` | Full Cream Milk (1 Gallon) |
-| `DAHI 1KG` | Yogurt (Pakistani market) |
-| `MURG QEEMA` | Minced Chicken (Pakistani market) |
-| `GRK YGRT PLN` | Plain Greek Yogurt |
-| `PANEER 500G` | Paneer (Indian/Pakistani) |
+| Raw receipt token   | What it actually is               |
+| ------------------- | --------------------------------- |
+| `ORG STRWBRY 1LB` | Organic Strawberries              |
+| `CHKN BRST BNLS`  | Boneless Chicken Breast           |
+| `MLK FL CRM 1GL`  | Full Cream Milk (1 Gallon)        |
+| `DAHI 1KG`        | Yogurt (Pakistani market)         |
+| `MURG QEEMA`      | Minced Chicken (Pakistani market) |
+| `GRK YGRT PLN`    | Plain Greek Yogurt                |
+| `PANEER 500G`     | Paneer (Indian/Pakistani)         |
 
 Without normalization, `"STRWBRY"` cannot be matched to the `shelf_life_reference` row `canonical_name = "Strawberries"` — the expiry prediction stage would fail silently.
 
@@ -70,16 +71,16 @@ Raw food token
 │  Pass 2: Fuzzy Matching             │
 │  rapidfuzz token_sort_ratio         │
 │  against shelf_life_reference names │
-│  score ≥ 80 → accept               │
+│  score ≥ 80 → accept                │
 │  Confidence: score / 100            │
 └──────────────┬──────────────────────┘
                │ score < 80
                v
 ┌─────────────────────────────────────┐
 │  Pass 3: LLM Fallback               │
-│  Groq API (llama-3.1-8b-instant)   │
+│  Groq API (llama-3.1-8b-instant)    │
 │  Cached in normalization_cache DB   │
-│  Handles ≤ 20% of cases            │
+│  Handles ≤ 20% of cases             │
 │  Confidence: 0.70                   │
 └──────────────┬──────────────────────┘
                │
@@ -392,6 +393,7 @@ def seed_shelf_life(db_session):
 About 65% of all raw receipt tokens can be resolved with a direct dictionary lookup. Retailers use a consistent (if cryptic) shorthand that is largely stable across store visits. Building this map upfront means the majority of normalizations happen at O(1) with 100% confidence and zero latency.
 
 The map covers three domains equally:
+
 - **US retail abbreviations** — Kroger, Walmart, Costco, Whole Foods style shortcodes
 - **Pakistani market names** — both English transliterations (MURG, GOSHT, DAHI) and common branded items
 - **Global/international** — metric units, European brand patterns, broadly shared food names
@@ -1003,6 +1005,7 @@ fuzz.token_sort_ratio("BRST CHKN", "Chicken Breast") → 70  ← much better
 ### 5.2 Score threshold calibration
 
 The threshold of 80 is chosen empirically:
+
 - Score ≥ 90 → almost certainly correct
 - Score 80–89 → usually correct; occasional false positive on short tokens
 - Score 70–79 → too many false positives; `"SALT"` vs `"Malt"` → 75
@@ -1097,6 +1100,7 @@ def pass2_fuzzy(cleaned_token: str, db: Session) -> tuple[str | None, float]:
 ### 6.1 LLM provider choice
 
 **Groq** is the free LLM option used for this pipeline. Groq's free tier provides:
+
 - No API cost on the free tier (rate-limited but sufficient for ≤ 20% fallback rate)
 - Extremely low latency: Groq's LPU hardware typically returns in 200–400ms
 - `llama-3.1-8b-instant` model — fast, small, accurate on short constrained prompts
@@ -1525,12 +1529,12 @@ def normalize_entity(
 
 ### Confidence Score Interpretation
 
-| Range | Source | Meaning |
-|---|---|---|
-| 1.00 | Pass 1 | Exact abbreviation map hit — highest reliability |
-| 0.80 – 0.99 | Pass 2 | Fuzzy match above threshold — reliable |
-| 0.70 | Pass 3 | LLM resolution — review if confidence matters |
-| 0.00 | All failed | Item unresolvable — surface to user for manual entry |
+| Range        | Source     | Meaning                                               |
+| ------------ | ---------- | ----------------------------------------------------- |
+| 1.00         | Pass 1     | Exact abbreviation map hit — highest reliability     |
+| 0.80 – 0.99 | Pass 2     | Fuzzy match above threshold — reliable               |
+| 0.70         | Pass 3     | LLM resolution — review if confidence matters        |
+| 0.00         | All failed | Item unresolvable — surface to user for manual entry |
 
 Items with `confidence < 0.70` or `normalization_pass == 0` are flagged in the Stage 4 confidence score and surfaced in the frontend confirmation modal with a warning indicator.
 
@@ -1652,21 +1656,21 @@ if __name__ == "__main__":
 
 ### 10.2 Target metrics
 
-| Metric | Definition | Target |
-|---|---|---|
-| Canonical Match Rate | % items resolved by Pass 1 + Pass 2 | ≥ 80% |
-| LLM Fallback Rate | % items needing Pass 3 | ≤ 20% |
-| End-to-end accuracy | % items correctly identified (any pass) | ≥ 85% |
+| Metric               | Definition                              | Target |
+| -------------------- | --------------------------------------- | ------ |
+| Canonical Match Rate | % items resolved by Pass 1 + Pass 2     | ≥ 80% |
+| LLM Fallback Rate    | % items needing Pass 3                  | ≤ 20% |
+| End-to-end accuracy  | % items correctly identified (any pass) | ≥ 85% |
 
 ### 10.3 If targets aren't met
 
-| Symptom | Action |
-|---|---|
-| Canonical Match Rate < 80% | Add more entries to `ABBREVIATION_MAP` for the failing tokens. Print Pass 1 misses and batch-add them. |
-| LLM Fallback Rate > 20% | Same as above — the LLM fallback rate is the inverse of map+fuzzy coverage. Expand the map. |
-| Fuzzy false positives | Raise `FUZZY_THRESHOLD` from 80 to 85. Or add the false-positive token explicitly to `ABBREVIATION_MAP` with its correct canonical name to force a Pass 1 exact hit. |
-| LLM returns wrong name | Add the token to `ABBREVIATION_MAP` or `normalization_cache` with `source='manual'` to override future LLM calls. |
-| `GROQ_API_KEY` not set | Set env var in `.env` file and load via `python-dotenv` at app startup. |
+| Symptom                    | Action                                                                                                                                                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical Match Rate < 80% | Add more entries to`ABBREVIATION_MAP` for the failing tokens. Print Pass 1 misses and batch-add them.                                                                 |
+| LLM Fallback Rate > 20%    | Same as above — the LLM fallback rate is the inverse of map+fuzzy coverage. Expand the map.                                                                            |
+| Fuzzy false positives      | Raise`FUZZY_THRESHOLD` from 80 to 85. Or add the false-positive token explicitly to `ABBREVIATION_MAP` with its correct canonical name to force a Pass 1 exact hit. |
+| LLM returns wrong name     | Add the token to`ABBREVIATION_MAP` or `normalization_cache` with `source='manual'` to override future LLM calls.                                                  |
+| `GROQ_API_KEY` not set   | Set env var in`.env` file and load via `python-dotenv` at app startup.                                                                                              |
 
 ---
 
@@ -1714,11 +1718,13 @@ Smart-Stock/
 ### 11.4 Create `app/` package
 
 **`app/__init__.py`** — empty file:
+
 ```bash
 mkdir app && touch app/__init__.py
 ```
 
 **`app/models.py`:**
+
 ```python
 from sqlalchemy import Column, Integer, String, Text, DateTime, func
 from sqlalchemy.ext.declarative import declarative_base
@@ -1751,6 +1757,7 @@ class NormalizationCache(Base):
 ```
 
 **`app/db.py`:**
+
 ```python
 import os
 from sqlalchemy import create_engine
@@ -1782,6 +1789,7 @@ alembic init migrations
 ```
 
 Open `alembic.ini` and clear the url line (it will be set from env instead):
+
 ```ini
 # alembic.ini — find this line and blank it out:
 sqlalchemy.url =
@@ -1790,6 +1798,7 @@ sqlalchemy.url =
 Open `migrations/env.py` and make these two edits:
 
 **At the top, add imports:**
+
 ```python
 import os
 import sys
@@ -1802,11 +1811,13 @@ from app.models import Base  # noqa: E402
 ```
 
 **Find `target_metadata = None` and replace:**
+
 ```python
 target_metadata = Base.metadata
 ```
 
 **Inside `run_migrations_online()`, find `connectable = engine_from_config(...)` block and add one line before it:**
+
 ```python
 config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 ```
@@ -1857,13 +1868,13 @@ if __name__ == "__main__":
 
 ### 11.8 Runtime estimate
 
-| Operation | Latency |
-|---|---|
-| Pass 1 (dict lookup) | < 1ms |
-| Pass 2 (fuzzy, ~150 canonical names) | < 10ms |
-| Pass 3 (Groq API, cache miss) | 200–600ms |
-| Pass 3 (cache hit) | < 1ms |
-| Full receipt (10–15 items, ≤ 20% LLM) | < 400ms |
+| Operation                               | Latency    |
+| --------------------------------------- | ---------- |
+| Pass 1 (dict lookup)                    | < 1ms      |
+| Pass 2 (fuzzy, ~150 canonical names)    | < 10ms     |
+| Pass 3 (Groq API, cache miss)           | 200–600ms |
+| Pass 3 (cache hit)                      | < 1ms      |
+| Full receipt (10–15 items, ≤ 20% LLM) | < 400ms    |
 
 ---
 
@@ -1916,20 +1927,21 @@ python -m ml_service.normalization.evaluate
 ```
 
 Notes:
+
 - The SQLite workflow bypasses Alembic migrations — it's intended for fast, throwaway test runs. If you need to run the full seed script with many rows, run the script shown in `11.6` after adjusting its `sys.path` (the seed script works on SQLite too once tables exist).
 - `app.models` uses SQLAlchemy `func.now()` and standard Column types, so the same models work on SQLite for testing. If you use raw Postgres-specific SQL elsewhere, keep those confined to production-only scripts.
 
 ## Appendix: Troubleshooting
 
-| Issue | Fix |
-|---|---|
-| `GROQ_API_KEY` not found / `EnvironmentError` | Add `GROQ_API_KEY=gsk_...` to `.env` and call `load_dotenv()` before app startup |
-| Groq 429 rate limit error | Cache hit rate is too low — check that `normalization_cache` DB is connected. Confirm repeated items are hitting cache, not re-calling Groq. |
-| Fuzzy match false positive (e.g. "SALT" → "Malt") | Add the token explicitly to `ABBREVIATION_MAP` with the correct canonical name to force a Pass 1 exact hit and bypass fuzzy entirely |
-| `_canonical_names_cache` is empty | `shelf_life_reference` table not seeded. Run `python -m db.seeds.shelf_life_seed` first. |
-| Pakistani item not resolving past Pass 1 | The Urdu transliteration varies by retailer. Add the exact receipt token variant seen to `ABBREVIATION_MAP`. Common variants to add: `ALOO BUKHARA` (plum), `IMLI` (tamarind), `SARSON` (mustard greens). |
-| LLM returns multi-word explanation instead of name | `_clean_llm_response()` takes only the first line and strips punctuation. If the LLM is consistently verbose, add `"Answer in one to three words only."` to the prompt. |
-| Fused qty+unit token (`"1LB"`) not splitting | `parse_quantity_unit` handles this in the fused-token regex branch. Confirm `raw_unit` is `None` when the unit is fused into `raw_qty`. If NER already split them, the standard path handles it. |
-| `canonical_names_cache` not refreshing after seeding new items | Module-level cache is populated once per process. Restart the FastAPI server after running the seed script. |
-| `normalize_entity` returns `None` for a known item | Print `cleaned` from `preprocess_token` — the modifier stripping may have removed too much. Add a direct entry to `ABBREVIATION_MAP` for the exact post-cleaning token. |
-| `ShortTokenSkipped` — 3-char token goes directly to LLM | By design — fuzzy is unreliable on tokens ≤ 4 chars. Add the token to `ABBREVIATION_MAP` for a reliable Pass 1 hit instead (e.g. `"OJ": "Orange Juice"`). |
+| Issue                                                            | Fix                                                                                                                                                                                                              |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GROQ_API_KEY` not found / `EnvironmentError`                | Add`GROQ_API_KEY=gsk_...` to `.env` and call `load_dotenv()` before app startup                                                                                                                            |
+| Groq 429 rate limit error                                        | Cache hit rate is too low — check that`normalization_cache` DB is connected. Confirm repeated items are hitting cache, not re-calling Groq.                                                                   |
+| Fuzzy match false positive (e.g. "SALT" → "Malt")               | Add the token explicitly to`ABBREVIATION_MAP` with the correct canonical name to force a Pass 1 exact hit and bypass fuzzy entirely                                                                            |
+| `_canonical_names_cache` is empty                              | `shelf_life_reference` table not seeded. Run `python -m db.seeds.shelf_life_seed` first.                                                                                                                     |
+| Pakistani item not resolving past Pass 1                         | The Urdu transliteration varies by retailer. Add the exact receipt token variant seen to`ABBREVIATION_MAP`. Common variants to add: `ALOO BUKHARA` (plum), `IMLI` (tamarind), `SARSON` (mustard greens). |
+| LLM returns multi-word explanation instead of name               | `_clean_llm_response()` takes only the first line and strips punctuation. If the LLM is consistently verbose, add `"Answer in one to three words only."` to the prompt.                                      |
+| Fused qty+unit token (`"1LB"`) not splitting                   | `parse_quantity_unit` handles this in the fused-token regex branch. Confirm `raw_unit` is `None` when the unit is fused into `raw_qty`. If NER already split them, the standard path handles it.         |
+| `canonical_names_cache` not refreshing after seeding new items | Module-level cache is populated once per process. Restart the FastAPI server after running the seed script.                                                                                                      |
+| `normalize_entity` returns `None` for a known item           | Print`cleaned` from `preprocess_token` — the modifier stripping may have removed too much. Add a direct entry to `ABBREVIATION_MAP` for the exact post-cleaning token.                                    |
+| `ShortTokenSkipped` — 3-char token goes directly to LLM       | By design — fuzzy is unreliable on tokens ≤ 4 chars. Add the token to`ABBREVIATION_MAP` for a reliable Pass 1 hit instead (e.g. `"OJ": "Orange Juice"`).                                                   |

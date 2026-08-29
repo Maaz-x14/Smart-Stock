@@ -45,8 +45,8 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 │  └──────┬───────┘  └──────┬───────┘  └──────┬─────┴──────┬──────┘   │
 │         │                 │                 │            │          │
 └─────────│─────────────────│─────────────────│────────────│──────────┘
-          │                 │                 │            │
-┌─────────▼─────────────────│─────────────────│────────────│─────────┐
+          │                 └─────────────────│            │
+┌─────────▼───────────────────────────────────│────────────│─────────┐
 │                    ML PIPELINE LAYER        │            │         │
 │                                             │            │         │
 │  ┌──────────────────────────────────────┐   │            │         │
@@ -116,7 +116,7 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
                └─────────────────────────────────┘
 ```
 
-<img src="data/smart_stock_pipeline.svg" alt="Pipeline" width="500" />
+<img src="assets/svgs/smart_stock_pipeline.svg" alt="Pipeline" width="500" />
 
 ---
 

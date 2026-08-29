@@ -91,7 +91,7 @@ Once row parsing extracts quantity/price/discount/total structurally (by matchin
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-<img src="data/smart_stock_pipeline.svg" alt="Pipeline" width="500" />
+<img src="assets/svgs/smart_stock_pipeline.svg" alt="Pipeline" width="500" />
 
 ---
 
