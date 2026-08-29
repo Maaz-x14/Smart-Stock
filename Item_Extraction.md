@@ -2,8 +2,8 @@
 
 **Version:** 1.0  
 **Status:** Partially built.  
- `unit_extractor.py` and `brand_matcher.py` implemented and smoke-tested.  
- `food_classifier.py` and `extractor.py` designed, not yet implemented.
+ `unit_extractor.py`, `brand_matcher.py`, `food_classifier.py` implemented and smoke-tested.  
+ `extractor.py` designed, not yet implemented — blocks end-to-end Stage 2.
 
 ---
 
@@ -175,27 +175,119 @@ An earlier version of this module included a "conservative candidate" heuristic:
 
 ## 4. Module: `food_classifier.py`
 
-**Status:** ⏳ Designed, not implemented. Tracked as #28.
+**Status:** ✅ Built, smoke-tested against the real Groq API (not mocked). Closed via #28.
 
 **Approach:** LLM gate, binary classification (`is_food: bool`). No labeled data exists for this exact task shape — the old DistilBERT NER was trained for full-line entity tagging, which doesn't transfer to a single yes/no classification.
 
 **Input:** `remaining_text` (post unit + brand extraction — closer to the bare product name, e.g. `"BROCCOLI"`, `"Supravit-M Tablet"`)
+
 **Output:** `is_food: bool`
 
-**Distinct from Stage 3 Pass 3's LLM call** — this asks "is this food at all," Stage 3 Pass 3 asks "what's the canonical name for this already-confirmed food item." Different questions, deliberately not merged (flagged in HANDOFF.md as a possible future optimization, not decided).
+**Distinct from Stage 3 Pass 3's LLM call** — this asks "is this food at all," Stage 3 Pass 3 asks "what's the canonical name for this already-confirmed food item." Different questions, deliberately not merged (flagged in `HANDOFF.md` as a possible future optimization, not decided).
 
 **Not yet decided:**
-- Prompt design
-- Fallback behavior if the LLM API is unavailable (PRD.md §8 flags this as an open item across both this stage and Stage 3 Pass 3)
-- Confidence threshold, if any — binary output may not need one
 
-**Related, not blocking implementation:** #34 — build a labeled `is_food` sample to actually measure this gate's accuracy once built. No labeled data exists yet.
+- Confidence threshold — deferred until real confidence-score distributions exist (see Phase 4). `classify_is_food()` returns the raw confidence value; thresholding into `unknown` based on low confidence is not yet applied anywhere.
+
+### Fallback / unknown-state design (Phase 5 — implemented)
+
+Any API failure, timeout, or malformed response → immediate `UNKNOWN` outcome. **No retry** — deliberate choice, not a shortcut. `UNKNOWN` is surfaced to the user identically to `is_food=False` (reuses the existing "detected but excluded" flow from API_Spec.md §2) rather than inventing a new UI state or silently dropping/accepting the item.
+
+Verified against real failure conditions (bad/missing API key during testing) — correctly returned `UNKNOWN`, not a crash or a silent guess.
+
+No explicit request timeout override — uses SDK default.
+
+### Reasoning field (found during smoke testing, not originally planned)
+
+Groq's `openai/gpt-oss-20b` returns a reasoning trace on a **separate `reasoning` field**, not inline in `content` — `content` stays clean, parseable JSON regardless. This is expected model behavior, not a prompt failure. The reasoning trace is now captured on `FoodClassificationResult.reasoning` for debugging/audit — not parsed or relied on for the actual decision, `content` remains the source of truth.
+
+### Smoke test result
+
+4/4 correct against real Groq API calls (not the original 15-item Phase 1 sample — a smaller manual re-check post-implementation):
+
+| Item | outcome | confidence |
+|---|---|---|
+| `ORG STRWBRY` | food | 0.95 |
+| `Supravit-M Tablet 10's` | not_food | 0.9 |
+| `CHICKEN BREAST` | food | 0.95 |
+| `Dettol Antiseptic` | not_food | 0.99 |
+
+**Known gap:** `raw_response` only stores `.content`; full completion metadata (token usage, etc.) is not logged. Not currently needed, flagged as a future logging opportunity if debugging requires it.
+
+**Related, not blocking implementation:** #34 — build a labeled `is_food` sample to actually measure this gate's accuracy at scale. No labeled data exists yet; the 15+4 items tested so far are hand-picked sanity checks, not a real accuracy measurement.
+
+## Model selection (Phase 1 — completed)
+
+| Candidate | Valid JSON | Correct | Avg latency | Result |
+|---|---|---|---|---|
+| **Groq: `openai/gpt-oss-20b`** | 15/15 | 15/15 | 1037ms | ✅ **Selected** |
+| Gemini: `gemini-3.5-flash-lite` | 14/15 | 14/15 | 2808ms | ❌ Rate-limited (15 RPM free tier — too tight for a receipt's worth of items in one upload) |
+| OpenRouter: `google/gemma-4-26b-a4b-it:free` | 0/15 | 0/15 | N/A | ❌ Upstream 429, shared free-pool rate limit |
+| OpenRouter: `liquid/lfm-2.5-2.6b:free` | 0/15 | 0/15 | N/A | ❌ Unreliable — truncated/malformed JSON and `None` responses independent of rate limits |
+
+**Decision: Groq `openai/gpt-oss-20b`.** Clean sweep — no errors, no rate-limit friction, fastest and only 100%-correct candidate on the sanity sample. The other three failed on infrastructure reliability, not classification ability.
+
+Provider abstraction (`FOOD_CLASSIFIER_PROVIDER`/`FOOD_CLASSIFIER_MODEL` config) is kept regardless, so a fallback provider can be swapped in later — but no fallback has been validated; the other 3 candidates are not production-ready fallbacks based on this test.
+
+### Phase 2 — Prompt Design (locked, matches implementation)
+
+System Prompt:
+
+You are a binary food classifier for retail receipt items. Given an item name, output ONLY a JSON object in this exact shape:
+
+{"is_food": true|false, "confidence": 0.0-1.0}
+
+Rules:
+
+* No explanation, no reasoning, no text before or after the JSON.
+* "is_food" = true only for edible food/beverage items for human consumption.
+* "is_food" = false for non-food items (medicine, cleaning products, toiletries, electronics, etc.).
+* If genuinely ambiguous, still output your best guess with a lower confidence score - do not refuse, do not add caveats.
+
+Examples:
+Item: "ORG STRWBRY" -> {"is_food": true, "confidence": 0.95}
+Item: "Supravit-M Tablet 10's" -> {"is_food": false, "confidence": 0.9}
+Item: "XYZFOODS RICE" -> {"is_food": true, "confidence": 0.6}
+
+User:
+
+Item: "{item_name}"
+
+---
+
+### Phase 3 — Provider Abstraction
+
+`food_classifier.py` calls a swappable LLM interface.
+
+Config picks provider + model (`FOOD_CLASSIFIER_PROVIDER`, `FOOD_CLASSIFIER_MODEL`) — no hardcoded Groq/OpenRouter calls inside the classification logic itself.
+
+---
+
+### Phase 4 — Threshold
+
+Deferred until real confidence-score distributions exist.
+
+No number picked yet.
+
+---
+
+### Phase 5 — Fallback / Unknown State, Caching
+
+As agreed: API-down + low-confidence unify into one unknown path, reusing the existing surfaced/flagged item pattern.
+
+Caching is latency/cost only.
+
+---
+
+### Phase 6 — Build + Smoke Test
+
+Implementation pending once the prompt and provider abstraction are finalized.
 
 ---
 
 ## 5. Module: `extractor.py`
 
-**Status:** ⏳ Designed, not implemented. Tracked as #29. Depends on #26 (done), #27 (done), #28 (not started).
+**Status:** ⏳ Designed, not implemented. Tracked as #29. Depends on #26 (done), #27 (done), #28 (done).
 
 **Role:** Orchestrates the three components above into the Stage 2 contract.
 
@@ -223,14 +315,15 @@ No component in this stage has been measured against real data yet — matches t
 |---|---|---|
 | Unit extraction | Not yet formally targeted | Smoke-tested on doc examples only |
 | Brand extraction | Not yet formally targeted | Smoke-tested on doc examples only |
-| is_food classification | Not yet formally targeted | Not built |
+| is_food classification | Not yet formally targeted | Built, smoke-tested (19 hand-picked items across two test rounds, 100% correct) — not yet measured against a real labeled dataset (#34) |
 | End-to-end Stage 2 | Not yet formally targeted | Not wired (#29 blocks this) |
 
 ---
 
 ## 7. Open items (carried from HANDOFF.md, not re-litigated here)
 
-- `food_classifier.py` prompt design and LLM fallback behavior — undecided.
-- `extractor.py` input question above (remaining_text vs full item_name for food gate) — undecided.
+- `extractor.py` input question (remaining_text vs full item_name for food gate) — undecided.
 - Real-receipt validation for `unit_extractor.py` and `brand_matcher.py` — not yet run.
 - Latency of brand fuzzy-matching at scale — not yet measured.
+- `food_classifier.py` confidence threshold — deferred until real confidence distributions exist.
+- `food_classifier.py` real-accuracy measurement — blocked on #34 (labeled dataset), no data yet.
