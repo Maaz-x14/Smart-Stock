@@ -1,9 +1,7 @@
 # Item_Extraction.md — Stage 2: Item Field Extraction
 
 **Version:** 1.0  
-**Status:** Partially built.  
- `unit_extractor.py`, `brand_matcher.py`, `food_classifier.py` implemented and smoke-tested.  
- `extractor.py` designed, not yet implemented — blocks end-to-end Stage 2.
+**Status:** ✅ Complete. All four Stage 2 modules implemented and smoke-tested: `unit_extractor.py`, `brand_matcher.py`, `food_classifier.py`, `extractor.py`. Not yet validated against real receipt data or the real #34 labeled dataset.
 
 ---
 
@@ -218,6 +216,10 @@ Groq's `openai/gpt-oss-20b` returns a reasoning trace on a **separate `reasoning
 
 ## Model selection (Phase 1 — completed)
 
+Original 7-candidate shortlist was cut down before testing: several (Qwen3 14B/8B, Gemma 3 12B, Nemotron Nano 9B V2, GLM-4.5-Air) turned out to be stale/unconfirmed on Groq's own docs, and Llama 3.1 8B Instant was found **deprecated by Groq on 2026-06-17** (replaced by GPT-OSS 20B). Broader OpenRouter free-tier browsing also surfaced mostly large agentic/reasoning models, embeddings, and TTS — wrong shape for a small binary classifier. Final tested set: 4 candidates across Groq, Gemini, and OpenRouter.
+
+**Test:** 15-item hand-labeled sample (not the real #34 dataset — a stand-in for pre-selection sanity checking), locked prompt (see Phase 2), strict JSON-only output required.
+
 | Candidate | Valid JSON | Correct | Avg latency | Result |
 |---|---|---|---|---|
 | **Groq: `openai/gpt-oss-20b`** | 15/15 | 15/15 | 1037ms | ✅ **Selected** |
@@ -287,7 +289,7 @@ Implementation pending once the prompt and provider abstraction are finalized.
 
 ## 5. Module: `extractor.py`
 
-**Status:** ⏳ Designed, not implemented. Tracked as #29. Depends on #26 (done), #27 (done), #28 (done).
+**Status:** ✅ Built, smoke-tested. Closed via #29.
 
 **Role:** Orchestrates the three components above into the Stage 2 contract.
 
@@ -295,15 +297,44 @@ Implementation pending once the prompt and provider abstraction are finalized.
 def extract_item_fields(item_name: str) -> ItemFields:
     unit_result = extract_unit(item_name)
     brand_result = extract_brand(unit_result.remaining_text)
-    is_food = classify_is_food(brand_result.remaining_text)
+
+    classification_input = brand_result.remaining_text.strip() or item_name
+    food_result = classify_is_food(classification_input)
+
     return ItemFields(
         unit=unit_result.unit,
         brand=brand_result.brand,
-        is_food=is_food,
+        is_food=food_result.is_food,
     )
 ```
 
-**Open design question, not yet decided:** does `food_classifier` run on `brand_result.remaining_text` (bare product name, current assumption above) or on the original `item_name` (full context, in case the LLM benefits from seeing brand/unit context back)? Needs a decision once `food_classifier.py` design is locked.
+### Design decision: food_classifier input
+
+Runs on `remaining_text` (bare product name, post unit+brand strip) by default — chosen as a cleaner classification signal than the full string with brand/unit noise still in it. Not settled permanently: if real data shows this loses useful context, revert to `item_name`.
+
+**Fallback:** if unit+brand extraction consumes the entire `item_name` (`remaining_text` becomes `""`), classification falls back to the original `item_name`. Example: `"NESTLE 1L"` → unit strips `"1L"`, brand strips `"Nestle"` → `remaining_text = ""` → falls back to classifying `"NESTLE 1L"` directly, rather than feeding an empty string (which `food_classifier.py`'s own empty-input guard turns into `UNKNOWN`).
+
+`ItemFields.is_food` is `bool | None` — `None` means unknown (API failure or malformed response), matching `food_classifier.py`'s real output shape. Downstream pipeline gating (skip Normalization/Expiry, surface to user) must treat `None` the same as `False`, per API_Spec.md §2 — that equivalence is enforced at the pipeline-gating layer, not by this dataclass.
+
+### Real bug found via this module's smoke testing
+
+Testing the empty-`remaining_text` fallback (`"NESTLE 1L"`) surfaced a genuine bug in `food_classifier.py`, not this module: the fallback correctly fed `"NESTLE 1L"` to the classifier, but the model's reasoning trace ran long on this ambiguous item, and `max_tokens=100` was shared between reasoning and content — the response got cut off mid-JSON (`'{"is_food": true'`), which the strict parser correctly rejected, producing a false `UNKNOWN` for an item that was actually food.
+
+**Fixed in `food_classifier.py`:** `max_tokens` raised 100 → 300 (headroom, not a formally derived worst case). Confirmed fixed — `"NESTLE 1L"` now resolves `is_food=True` with the full reasoning trace intact.
+
+### Latency (ad-hoc measurement via `debug=True` timing, not a formal benchmark)
+
+| Item | unit | brand | food classification | total |
+|---|---|---|---|---|
+| `Supravit-M Tablet 10's` | 0.0ms | 0.8ms | 689.5ms | 690.3ms |
+| `NESTLE 1L` | 0.1ms | 0.4ms | 713.4ms | 713.8ms |
+| `CHICKEN BREAST 500G` | 0.0ms | 0.2ms | 614.1ms | 614.4ms |
+| `Dettol Antiseptic 500ML` | 0.0ms | 0.5ms | 614.2ms | 614.7ms |
+| **Average (excl. first call)** | ~0.03ms | ~0.5ms | **~657.8ms** | **~658.3ms** |
+
+First call (`ORG STRWBRY 1LB`) excluded — ~6800ms, presumed cold-start/connection warm-up (client init, DNS/TLS), not representative of steady-state cost. Unconfirmed — not re-tested to isolate the cause.
+
+**Implication for #25 (pipeline orchestrator):** unit/brand extraction is negligible (<1ms combined); food classification dominates entirely at ~650-700ms/item. A receipt with 15-20 items classified **sequentially** would take ~10-14+ seconds for Stage 2 alone, breaking PRD.md §6's 10-second upload budget. Needs concurrent/batched classification calls when wired into the real pipeline — not addressed in `extractor.py` itself, which is correctly scoped to a single item.
 
 ---
 
@@ -316,14 +347,16 @@ No component in this stage has been measured against real data yet — matches t
 | Unit extraction | Not yet formally targeted | Smoke-tested on doc examples only |
 | Brand extraction | Not yet formally targeted | Smoke-tested on doc examples only |
 | is_food classification | Not yet formally targeted | Built, smoke-tested (19 hand-picked items across two test rounds, 100% correct) — not yet measured against a real labeled dataset (#34) |
-| End-to-end Stage 2 | Not yet formally targeted | Not wired (#29 blocks this) |
+| End-to-end Stage 2 | Not yet formally targeted | Wired (#29). Smoke-tested, 5/5 correct after max_tokens fix. ~658ms/item avg (food classification dominant, unit/brand negligible) — not yet re-tested against real pipeline throughput at receipt scale |
 
 ---
 
 ## 7. Open items (carried from HANDOFF.md, not re-litigated here)
 
-- `extractor.py` input question (remaining_text vs full item_name for food gate) — undecided.
+- `extractor.py`'s remaining_text-vs-item_name choice for the food gate is a default, not final — revisit if real data shows confusion.
 - Real-receipt validation for `unit_extractor.py` and `brand_matcher.py` — not yet run.
 - Latency of brand fuzzy-matching at scale — not yet measured.
 - `food_classifier.py` confidence threshold — deferred until real confidence distributions exist.
 - `food_classifier.py` real-accuracy measurement — blocked on #34 (labeled dataset), no data yet.
+- **Sequential food-classification latency (~650-700ms/item) will break PRD.md §6's 10-second upload budget on multi-item receipts** — needs concurrent/batched classification, to be addressed in #25 (pipeline orchestrator), not in `extractor.py`.
+- First-call latency outlier (~6800ms on cold start) observed but not confirmed/isolated — presumed connection warm-up.
