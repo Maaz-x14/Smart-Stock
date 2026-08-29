@@ -1,192 +1,310 @@
 # SmartStock — AI-Powered Inventory & Waste Reduction
 
-Households waste ~30% of purchased food annually. SmartStock eliminates that by turning a grocery receipt photo into a live, expiry-aware inventory — with zero manual data entry.
+> **Turn a grocery receipt into an expiry-aware digital inventory.**
+
+SmartStock is an AI-powered inventory and food-waste reduction system that turns grocery receipt images into structured, expiry-aware inventory. Instead of manually logging every purchase, users upload a receipt and SmartStock handles OCR, layout reconstruction, item extraction, food classification, normalization, and shelf-life prediction.
+
+The project follows an **evidence-driven ML philosophy**: components are benchmarked against real receipts, and previous approaches are replaced when testing shows a better solution.
 
 ---
 
-## What it does
+## The Problem
 
-1. You photograph your grocery receipt
-2. SmartStock extracts every item via a custom-built OCR + row-parsing + item-field-extraction pipeline (no third-party Vision API)
-3. Each item gets a predicted expiry date based on category and storage context
-4. A virtual fridge dashboard tracks everything, color-coded by urgency
-5. 48 hours before something expires, you get a push notification with a recipe that uses it
+Households waste food partly because inventory is difficult to maintain:
+
+- **Memory gap:** users forget what is already in the fridge or pantry and buy duplicates.
+- **Expiration oversight:** food gets forgotten until it expires.
+
+Manual inventory apps depend on users maintaining a log. Smart fridges solve automation with expensive hardware.
+
+**SmartStock uses the receipt as the inventory record.**
 
 ---
 
-## Why the ML is built in-house
+## What It Does
 
-Most receipt apps wrap Google Cloud Vision or AWS Textract as a black-box API. SmartStock's pipeline is evaluated and owned end-to-end, including reversing earlier decisions when real-world testing called for it:
+```text
+Receipt Photo
+     ↓
+OCR + Layout Reconstruction
+     ↓
+Structured Item Extraction
+     ↓
+Food / Non-Food Gate
+     ↓
+Food Name Normalization
+     ↓
+Shelf-Life Prediction
+     ↓
+Expiry-Aware Inventory
+     ↓
+Alerts + Recipes + Waste Tracking
+```
 
-- **OCR:** a fine-tuned TrOCR model was built in-house first (see OCR_Training.md); pretrained PaddleOCR was evaluated against it and won on both accuracy and CPU latency, so it's used as-is — a deliberate, measured choice, not a fallback to an unowned API.
-- **Row parsing:** testing against real Pakistani retail receipts found that no two stores share a receipt header format (`Quantity | Price | Discount | Total` vs `Qty | Item | Rate | Amount` vs merged/multi-line variants). A header-driven parser reads each receipt's own column layout instead of assuming one fixed format.
-- **Item field extraction:** a fine-tuned DistilBERT NER model was built and evaluated first (F1 0.907 — see NER_Training.md), then **retired** once row parsing made its original task (tagging quantity/unit/price within a line) obsolete. What's left — unit, brand, is_food — is solved with regex, a fuzzy lexicon, and an LLM gate, none of which need training data or a served model.
-- Full control over the pipeline means measurable accuracy targets, swappable components on evidence, and the willingness to undo prior work when testing shows it's the wrong tool.
+Example:
+
+```text
+"ORG STRWBRY 1LB"
+        ↓
+item_name="ORG STRWBRY", quantity=1, unit="lb"
+        ↓
+is_food=true
+        ↓
+"Strawberries"
+        ↓
+Produce + Fridge
+        ↓
+predicted expiry + confidence
+```
+
+Non-food items are **not silently discarded**. They remain visible as detected-but-excluded items and skip food-specific normalization and expiry processing.
 
 ---
 
 ## ML Pipeline
 
-```
-Receipt Image
-     │
-     ▼
-┌─────────────────────────────────┐
-│  Stage 1: OCR                   │
-│  PaddleOCR (pretrained PP-OCRv6)│
-│  → text + bounding boxes        │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 1.5: Row Reconstruction  │
-│  Deskew + y-position clustering │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 1.6: Prefilter           │
-│  Drops metadata rows            │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 1.7: Row Parser          │
-│  Header-driven column mapping   │
-│  → qty, price, discount, total  │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 2: Item Field Extraction │
-│  Regex unit + brand lexicon     │
-│  + LLM is_food gate             │
-└────────────────┬────────────────┘
-     is_food=false → surfaced, stops here
-     is_food=true  │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 3: Normalization         │
-│  Lookup → Fuzzy → LLM fallback  │
-│  "ORG STRWBRY" → "Strawberries" │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 4: Expiry Prediction     │
-│  Rule-based + shelf-life DB     │
-│  Target: MAE ≤ 1.5 days         │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-         Inventory Item
-  { name, brand, qty, unit, expiry, confidence }
+<img src="assets/svgs/smart_stock_pipeline.svg" alt="Smart-Stock ML pipeline" width="620" />
+
+### Stage 1 — OCR
+
+**PaddleOCR / PP-OCRv6**, pretrained, extracts receipt text and bounding boxes.
+
+A fine-tuned TrOCR model was built first. Real-receipt testing showed that PaddleOCR was both more accurate on the tested item/quantity/price lines and dramatically faster: approximately **5–6s/receipt on CPU** versus roughly **480s** for the earlier TrOCR path.
+
+### Stage 1.5 — Row Reconstruction
+
+OCR produces text boxes rather than logical receipt rows. SmartStock estimates skew, deskews y-positions, clusters boxes into rows, and orders fields left-to-right.
+
+Validated on four real Pakistani retail receipts.
+
+### Stage 1.6 — Prefilter
+
+Rule-based filtering removes receipt metadata such as GST numbers, invoice information, payment rows, totals, dates, and other non-item content.
+
+### Stage 1.7 — Header-Driven Row Parser
+
+Real Pakistani receipts use different layouts:
+
+```text
+Quantity | Price | Discount | Total
+Qty | Item | Rate | Amount
+Quantity Price | Discount | Total
+M.R.P | Price | Qty/Wt | Tax(%) | Disc. Amount
 ```
 
----
+Rather than assuming a fixed format, SmartStock detects the receipt's own headers and maps fields using x-position.
 
-## Current ML Status
+It extracts `item_name`, `quantity`, `price`, `discount`, and `total`, with handling for merged headers, OCR numeric corruption, fallback parsing, and split rows.
 
-### Stage 1 — OCR ✅ Complete
+**Validation:** 100% field match on the initial four real receipt samples.
 
-| Model | PaddleOCR (PP-OCRv6, pretrained — no fine-tuning) |
-|-------|------------------------------------------|
-| Config | Small det/rec models; doc-orientation, unwarping, textline-orientation disabled |
-| CPU latency | ~5-6s/receipt |
-| Note | Fine-tuned TrOCR (CER 0.0631) was tried first — see OCR_Training.md — but pretrained PaddleOCR beat it on both accuracy and speed |
+### Stage 2 — Item Field Extraction
 
-### Stage 1.5–1.7 — Row Reconstruction, Prefilter, Row Parser ✅ Complete
+The original DistilBERT NER stage was retired after row parsing made its original task obsolete.
 
-| Component | Status |
-|-----------|--------|
-| Row reconstruction | Deskew correction + y-clustering, validated on 4 real receipts |
-| Prefilter | Rule-based metadata drop, relocated from `ner/` to `parsing/` |
-| Row parser | Fuzzy header detection + x-position column mapping, output matches ground truth on all fields across the 4-receipt sample |
+| Field | Method |
+|---|---|
+| Unit | Regex + OCR surface variants |
+| Brand | Curated lexicon + RapidFuzz |
+| `is_food` | LLM binary classification gate |
 
-One receipt format (multi-line header with a Tax(%) column) remains unsupported — deferred, tracked separately.
+The brand matcher intentionally does not guess unmatched food nouns as brands. A missing brand is valid.
 
-### Stage 2 — Item Field Extraction ✅ Complete
+### Stage 3 — Food Name Normalization
 
-| Component | Approach |
-|-----------|----------|
-| Unit | Regex extraction from item_name, including known OCR corruption patterns |
-| Brand | Fuzzy lexicon match (rapidfuzz), same infra as Stage 3 |
-| is_food | LLM gate — binary classification, no training data needed |
+Receipt printers abbreviate names:
 
-**Retired:** fine-tuned DistilBERT NER (F1 0.907). See NER_Training.md — real training work, preserved as historical record, but solving a task (full-line entity tagging) that no longer exists once Row Parser handles quantity/price/discount/total structurally.
+```text
+ORG STRWBRY   → Strawberries
+CHKN BRST BNLS → Boneless Chicken Breast
+DAHI          → Yogurt
+MURG QEEMA    → Minced Chicken
+```
 
-### Stage 3 — Normalization
+Three-pass normalization:
 
-Three-pass: direct abbreviation lookup (~800 entries, handles ~65% of cases) → fuzzy match via rapidfuzz → LLM fallback for unresolved tokens. Now only runs for items Stage 2 classified as food. Not yet re-tested against real Stage 1.5–2 output.
+1. Abbreviation lookup
+2. Fuzzy matching
+3. LLM fallback
+
+**Status:** implemented; real Stage 1.5–2 re-validation pending.
 
 ### Stage 4 — Expiry Prediction
 
-Rule-based lookup against a shelf-life reference database with 180+ items. Confidence score exposed per item — items below 0.60 are flagged for user review in the confirmation modal. Not yet re-tested against real pipeline output.
+Expiry prediction is intentionally not a trained regression model. The system uses a shelf-life reference database with confidence-aware lookup:
+
+```text
+Exact item + storage context
+        ↓
+Category fallback
+        ↓
+Hard default
+```
+
+**Status:** implemented; real Stage 1.5–2 re-validation pending.
+
+---
+
+## Why We Retired NER
+
+SmartStock originally used fine-tuned DistilBERT NER to tag `FOOD`, `QTY`, `UNIT`, and `PRICE`. It achieved **F1 = 0.907** on its evaluation setup.
+
+It was still retired.
+
+Real receipt testing showed that quantity, price, discount, and total are fundamentally **layout fields**. Once the receipt's column structure is detected, asking a token classifier to infer them is unnecessary.
+
+The architecture became:
+
+```text
+OCR boxes
+   ↓
+row reconstruction
+   ↓
+header-driven structural parsing
+   ↓
+small deterministic / semantic components
+```
+
+The NER experiment remains documented as historical work.
+
+---
+
+## Current Status
+
+| Component | Status |
+|---|---|
+| OCR | ✅ Complete — PaddleOCR selected after real-receipt comparison |
+| Row reconstruction | ✅ Complete — validated on 4 receipts |
+| Prefilter | ✅ Complete |
+| Row parser | ✅ Complete — 100% match on initial 4-receipt sample |
+| Unit extraction | ✅ Complete |
+| Brand matcher | ✅ Complete |
+| `is_food` classifier | ✅ Complete — real API smoke-tested |
+| Stage 2 extractor | ⏳ Components complete; orchestration pending |
+| Pipeline orchestrator | ⏳ Pending |
+| Normalization | ✅ Built; real-data validation pending |
+| Expiry prediction | ✅ Built; real-data validation pending |
+| End-to-end validation | ⏳ Pending |
+| End-to-end latency | ⏳ Needs re-measurement |
+| `is_food` evaluation set | ⏳ Needs labeled data |
+
+The repository deliberately distinguishes **implemented**, **validated**, and **measured** work.
+
+---
+
+## Architecture
+
+```text
+React Frontend
+     │
+     ▼
+FastAPI Backend
+     │
+     ▼
+OCR → Row Reconstruction → Prefilter → Row Parser
+                         → Item Field Extraction
+                         → Normalization → Expiry
+     │
+     ▼
+PostgreSQL
+Inventory · Shelf Life · Alerts · Waste Log · Users
+```
+
+Recipe suggestions use Spoonacular; expiry alerts are driven by scheduled jobs.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| ML training | PyTorch, HuggingFace Transformers, PEFT (LoRA), Kaggle T4 — used historically for OCR (TrOCR, retired) and NER (DistilBERT, retired). No component in the current pipeline requires training. |
-| Backend | FastAPI (Python), PostgreSQL, SQLAlchemy 2.0, Alembic migrations |
-| ML service | FastAPI (Python) — PaddleOCR (own runtime) for OCR; pure Python for row reconstruction/parsing; LLM API calls for is_food gate and Normalization Pass 3 |
-| Frontend | React (web-first, mobile-responsive) |
-| Recipe suggestions | Spoonacular API |
-| Notifications | Push via scheduled daily job |
+| Layer | Technologies |
+|---|---|
+| Frontend | React, TypeScript, Vite, React Query, Zustand |
+| Backend | FastAPI, Python, Uvicorn |
+| OCR | PaddleOCR / PP-OCRv6 |
+| Parsing | Python, regex, RapidFuzz |
+| Item extraction | Regex, brand lexicon, LLM API |
+| Normalization | Lookup tables, RapidFuzz, LLM fallback |
+| Expiry | PostgreSQL shelf-life reference + confidence scoring |
+| Database | PostgreSQL, SQLAlchemy 2.0, Alembic |
+| Authentication | JWT |
+| Recipes | Spoonacular API |
+| Historical ML | PyTorch, HuggingFace Transformers, PEFT/LoRA, Kaggle T4 |
 
 ---
 
-## Repo Structure
+## Repository Structure
 
-```
+```text
 Smart-Stock/
-├── app/                    # Frontend (React)
-├── ml_service/             # FastAPI ML inference service
-│   ├── ocr/                # PaddleOCR loader + row reconstruction (Stage 1, 1.5)
-│   ├── parsing/             # Prefilter + row parser (Stage 1.6, 1.7)
-│   ├── item_extraction/     # Unit regex, brand lexicon, LLM is_food gate (Stage 2)
-│   ├── normalization/       # Abbreviation map + fuzzy + LLM fallback (Stage 3)
-│   ├── expiry/               # Shelf-life lookup + confidence scoring (Stage 4)
-│   ├── ner/archive/          # Retired DistilBERT NER — historical record only
-│   └── pipeline.py          # Orchestrator (rewiring in progress)
-├── db/seeds/                # Database seed data
-├── migrations/               # Alembic DB migrations
-├── PRD.md                   # Product requirements
-├── ML_Pipeline.md           # Full pipeline architecture
-├── OCR_Training.md          # PaddleOCR setup + TrOCR fine-tuning guide + full training history
-├── NER_Training.md          # Retired DistilBERT NER — historical record
-├── Architecture.md          # System architecture
-├── API_Spec.md              # REST API specification
-└── DB_Schema.md             # Database schema
+├── app/                    # FastAPI application + DB models
+├── ml_service/
+│   ├── ocr/               # OCR + row reconstruction
+│   ├── parsing/            # Prefilter + row parser
+│   ├── item_extraction/   # Unit, brand, is_food
+│   ├── normalization/     # Food-name normalization
+│   ├── expiry/             # Shelf-life + expiry prediction
+│   ├── ner/                # Retired NER record
+│   └── pipeline.py         # End-to-end orchestrator
+├── db/seeds/               # Reference data
+├── migrations/             # Alembic migrations
+├── assets/svgs/            # Pipeline diagrams
+├── PRD.md
+├── Architecture.md
+├── ML_Pipeline.md
+├── Item_Extraction.md
+├── OCR_Training.md
+├── NER_Training.md
+├── Normalization_Training.md
+├── Expiry_Training.md
+├── API_Spec.md
+└── DB_Schema.md
 ```
 
 ---
 
-## Accuracy Targets
+## Engineering Philosophy
 
-| Stage | Metric | Target | Current |
-|-------|--------|--------|---------|
-| OCR | Real-receipt accuracy | Beat fine-tuned TrOCR baseline | ✅ PaddleOCR (pretrained) — correct on item/price/qty lines across all test receipts; CER/WER not applicable (pretrained, no held-out labeled set) |
-| Row Parser | Field extraction accuracy | Correctly extract qty/price/discount/total | ✅ 100% match on 4-receipt sample; not yet measured at scale |
-| Item Field Extraction | is_food / unit / brand accuracy | Not yet formally targeted | Not yet measured — no labeled sample built |
-| Normalization | Match rate | ≥ 80% | Built, not yet tested against real Stage 1.5–2 output |
-| Expiry | MAE (days) | ≤ 1.5 | Built, not yet tested against real pipeline output |
-| End-to-end | Item accuracy | ≥ 85% | Not yet measured — blocked on full pipeline wiring (`pipeline.py`) + Stage 3/4 real-data validation |
+> **Don't keep a model because it is impressive. Keep it because the evidence says it belongs there.**
+
+That principle has already produced several architecture changes:
+
+- fine-tuned TrOCR → pretrained PaddleOCR
+- DistilBERT NER → structural row parsing
+- trained item-field extraction → regex + lexicon + LLM gate
+- heuristic brand candidates → conservative lexicon-only matching
+- ML expiry regression → reference-data lookup + confidence scoring
+
+The goal is not to attach an AI model to an inventory app. The goal is to build a receipt-understanding system that survives messy real-world data.
 
 ---
 
-## Inference Latency Budget (CPU, per receipt)
+## Documentation
 
-**Not yet re-measured end-to-end since the Stage 2 restructure.**
+- [`Architecture.md`](Architecture.md) — system design
+- [`ML_Pipeline.md`](ML_Pipeline.md) — complete pipeline
+- [`Item_Extraction.md`](Item_Extraction.md) — Stage 2 design
+- [`OCR_Training.md`](OCR_Training.md) — OCR evaluation + TrOCR history
+- [`Normalization_Training.md`](Normalization_Training.md) — normalization
+- [`Expiry_Training.md`](Expiry_Training.md) — expiry prediction
+- [`API_Spec.md`](API_Spec.md) — REST API
+- [`DB_Schema.md`](DB_Schema.md) — PostgreSQL schema
+- [`PRD.md`](PRD.md) — product requirements
+- [`NER_Training.md`](NER_Training.md) — retired NER experiment
 
-| Stage | Target |
-|-------|--------|
-| Image preprocessing | < 200ms |
-| OCR (PaddleOCR) | ~5-6s |
-| Row reconstruction + prefilter + row parser | Not yet measured — expected negligible (pure Python, no model) |
-| Item Field Extraction | Not yet measured — LLM call (is_food) likely dominates |
-| Normalization | < 300ms (target, unvalidated) |
-| Expiry prediction | < 100ms (target, unvalidated) |
-| **Total** | **Needs full re-measurement — not yet run end-to-end on real data** |
+---
+
+## Roadmap
+
+- [ ] Wire Stage 2 extractor
+- [ ] Wire end-to-end pipeline orchestrator
+- [ ] Build labeled `is_food` evaluation set
+- [ ] Re-validate Normalization + Expiry on real receipt output
+- [ ] Re-measure end-to-end latency
+- [ ] Expand receipt-format coverage
+- [ ] Run full end-to-end accuracy evaluation
+
+---
+
+## License
+
+See the repository for licensing information.
