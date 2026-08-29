@@ -138,7 +138,15 @@ def _call_groq(item_name: str, model: str) -> tuple[str, str | None]:
             {"role": "user", "content": f'Item: "{item_name}"'},
         ],
         temperature=0,
-        max_tokens=100,
+        # max_tokens covers reasoning + content combined for this model
+        # (see Item_Extraction.md - gpt-oss-20b reasons on a separate
+        # field, but it still consumes the token budget). 100 was too
+        # low - a real truncation was observed on an ambiguous item
+        # ("NESTLE 1L") where longer reasoning ate the budget before
+        # content finished, producing malformed JSON -> false UNKNOWN.
+        # Raised with headroom; not derived from a formal worst-case
+        # token count, just observed failure + margin.
+        max_tokens=300,
         # No explicit timeout override - SDK default, per design decision.
     )
     message = resp.choices[0].message
