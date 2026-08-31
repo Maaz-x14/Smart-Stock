@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "description": "Default storage context per category, used when the user has not selected one. Extracted from ml_service/expiry/predictor.py's CATEGORY_DEFAULT_STORAGE.",
+    "note": "Small, stable, config-like data - candidate for staying inline was considered, but moved to a file for consistency with the rest of Stage 3/4's extracted data and to keep a single editing pattern."
+  },
+  "map": {
+    "Produce": "Fridge",
+    "Dairy": "Fridge",
+    "Meat": "Fridge",
+    "Pantry": "Pantry",
+    "Frozen": "Freezer",
+    "Beverages": "Pantry",
+    "Bakery": "Pantry",
+    "Snacks": "Pantry",
+    "Condiments & Sauces": "Fridge",
+    "Prepared Meals": "Fridge",
+    "Breakfast Foods": "Pantry",
+    "Confectionery": "Pantry",
+    "Baby Food": "Pantry",
+    "Other": "Fridge"
+  }
+}

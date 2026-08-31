@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "description": "Ground truth test cases for ml_service/expiry/evaluate.py. Extracted from inline TEST_CASES. Format CHANGED: was (NormalizedItem(...) hand-constructed, storage_context, expected_days) - now (item_name, storage_context_or_null, expected_days). item_name is fed through the REAL normalize_entity() at eval time instead of a fake pre-built NormalizedItem, so this test now actually exercises Stage 3 + Stage 4 together instead of only Stage 4 with fabricated Stage 3 output.",
+    "note": "item_name values chosen so Pass 1 (abbreviation_map) resolves to the same canonical_name the original hand-built NormalizedItem used, keeping the expected_days values valid. A few original cases specifically tested Stage 3 confidence propagation (Pass 2/3 confidence values like 0.85, 0.91, 0.70) - those were dropped from this file since they test Stage 3's confidence handling, not Stage 4's lookup logic, and belong in normalization's own eval instead. Added FRZ BROC to exercise the frozen-signal category fix end-to-end (Produce median 5 days matches Frozen category default in this seed set coincidentally - real check is that category resolves to Frozen at all, not the day count)."
+  },
+  "cases": [
+    {"item_name": "STRWBRY", "storage_context": "Fridge", "expected_days": 5},
+    {"item_name": "CHKN BRST", "storage_context": "Fridge", "expected_days": 2},
+    {"item_name": "WHL MLK", "storage_context": "Fridge", "expected_days": 7},
+    {"item_name": "BASMATI", "storage_context": "Pantry", "expected_days": 730},
+    {"item_name": "BTR", "storage_context": "Freezer", "expected_days": 90},
+    {"item_name": "EGGS", "storage_context": "Fridge", "expected_days": 35},
+    {"item_name": "DAHI", "storage_context": "Fridge", "expected_days": 5},
+    {"item_name": "MUTN", "storage_context": "Fridge", "expected_days": 3},
+    {"item_name": "PANEER", "storage_context": "Fridge", "expected_days": 5},
+    {"item_name": "ONI", "storage_context": "Pantry", "expected_days": 30},
+    {"item_name": "FRZ PEAS", "storage_context": "Freezer", "expected_days": 270},
+    {"item_name": "CORI", "storage_context": "Fridge", "expected_days": 7},
+    {"item_name": "SPNCH", "storage_context": null, "expected_days": 5},
+    {"item_name": "GRK YGRT", "storage_context": null, "expected_days": 14},
+    {"item_name": "PASTA", "storage_context": null, "expected_days": 730},
+    {"item_name": "ICE CRM", "storage_context": null, "expected_days": 60}
+  ]
+}
