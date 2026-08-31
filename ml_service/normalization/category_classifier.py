@@ -1,88 +1,61 @@
-# ml_service/normalization/category_classifier.py
+"""
+Stage 3 category assignment.
+
+Data moved to data/category_keywords.json (was inline dicts with real
+collision bugs - see that file's _meta).
+
+FIX: assign_category() now takes an optional `raw_token` (the original,
+unstripped receipt text, e.g. "FRZ BROC") in addition to
+`canonical_name`. If raw_token contains a frozen-signal keyword
+("frozen"/"frzn"/"frz"), category is Frozen immediately - checked
+BEFORE any other keyword list, using information (that the raw token
+said "frozen") that the canonical name alone ("Broccoli") can never
+recover. This is the correct fix, not a keyword-list edit: no amount
+of keyword-list reshuffling can let "Broccoli" alone disambiguate
+fresh vs frozen - the signal has to come from upstream, before
+normalization stripped it.
+
+If raw_token is not provided (backward-compat / DB-only callers),
+falls through to canonical_name matching only, same as before.
+"""
+
+import json
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 from app.models import ShelfLifeReference
 
-CATEGORY_KEYWORDS = {
-    "Produce": [
-        "berries", "berry", "apple", "apples", "orange", "mango", "banana",
-        "lettuce", "tomato", "onion", "garlic", "potato", "carrot", "spinach",
-        "cucumber", "pepper", "mushroom", "zucchini", "broccoli", "cauliflower",
-        "cabbage", "eggplant", "okra", "peas", "beans", "corn", "celery",
-        "coriander", "mint", "lemon", "lime", "grapes", "guava", "papaya",
-        "kiwi", "pear", "plum", "apricot", "cherry", "pomegranate", "watermelon",
-        "cantaloupe", "pineapple", "passionfruit", "dragonfruit", "starfruit",
-        "persimmon", "kale", "asparagus",
-    ],
-    "Dairy": [
-        "milk", "cheese", "yogurt", "dahi", "butter", "cream", "eggs",
-        "paneer", "lassi", "ghee", "curd", "brie", "feta", "ricotta",
-        "evaporated", "kefir", "buttermilk", "camembert",
-    ],
-    "Meat": [
-        "chicken", "beef", "mutton", "lamb", "pork", "salmon", "tuna",
-        "shrimp", "bacon", "sausage", "turkey", "qeema", "keema",
-        "gosht", "murg", "seekh", "kebab", "duck", "venison", "goat",
-        "crab", "lobster", "clam", "oyster",
-    ],
-    "Pantry": [
-        "pasta", "rice", "flour", "sugar", "salt", "oil", "sauce", "ketchup",
-        "mayo", "mustard", "bread", "oats", "lentils", "chickpeas", "beans",
-        "atta", "maida", "dal", "masala", "spice", "vinegar", "honey",
-        "peanut", "jam", "basmati", "chawal", "couscous", "millet", "barley",
-        "rye", "brown sugar", "maple", "tahini", "molasses", "coconut oil",
-    ],
-    "Frozen": [
-        "frozen", "frzn", "ice cream", "popsicle", "nuggets", "dumplings",
-        "fish fillets", "broccoli", "mango", "strawberries",
-    ],
-    "Beverages": [
-        "juice", "milk", "soda", "coffee", "tea", "water", "chai", "lassi",
-        "pineapple", "cranberry", "energy drink", "herbal", "green tea",
-        "instant coffee",
-    ],
-    "Bakery": [
-        "bread", "naan", "roti", "paratha", "chapati", "croissant", "bagel",
-        "muffin", "cake", "roll", "donut", "scone", "brownie", "cupcake",
-        "tart", "eclair",
-    ],
-    "Snacks": [
-        "chips", "pretzel", "trail mix", "popcorn", "granola", "rice cracker",
-        "cheese puff", "jerky", "fruit leather", "seaweed", "cracker",
-    ],
-    "Condiments & Sauces": [
-        "hummus", "tartar", "ranch", "worcestershire", "salsa", "harissa",
-        "gochujang", "bbq", "pesto", "fish sauce", "chili sauce",
-    ],
-    "Prepared Meals": [
-        "sandwich", "pizza slice", "sushi", "shawarma", "spring roll",
-        "pasta salad", "chicken curry", "lasagna", "biryani",
-    ],
-    "Breakfast Foods": [
-        "cornflakes", "muesli", "pancake", "waffle", "bagel with cream cheese",
-        "breakfast burrito", "scrambled eggs",
-    ],
-    "Confectionery": [
-        "chocolate", "candy", "marshmallow", "fudge", "truffle", "gummy",
-        "halva",
-    ],
-    "Baby Food": [
-        "formula", "baby cereal", "puree", "pouch", "toddler snack", "rusks",
-    ],
-}
+_DATA_PATH = Path(__file__).parent / "data" / "category_keywords.json"
 
 
-def assign_category(canonical_name: str, db: Session) -> str:
+def _load_data() -> tuple[list[str], dict[str, list[str]]]:
+    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data["frozen_signal_keywords"], data["categories"]
+
+
+FROZEN_SIGNAL_KEYWORDS, CATEGORY_KEYWORDS = _load_data()
+
+
+def assign_category(canonical_name: str, db: Session, raw_token: str | None = None) -> str:
     """
     Assign category to a canonical food name.
 
     Priority:
+    0. Frozen-signal check on raw_token (if provided) - catches
+       "frozen X" before X's own keyword would route it elsewhere.
     1. Exact match in shelf_life_reference (most reliable)
     2. Keyword classifier fallback (approximate)
     3. "Other" if no match
 
     Returns category string.
     """
+    # Pass 0: frozen-signal priority check (see module docstring)
+    if raw_token:
+        raw_lower = raw_token.lower()
+        if any(signal in raw_lower for signal in FROZEN_SIGNAL_KEYWORDS):
+            return "Frozen"
+
     # Pass 1: DB lookup
     ref = db.query(ShelfLifeReference).filter_by(canonical_name=canonical_name).first()
     if ref:

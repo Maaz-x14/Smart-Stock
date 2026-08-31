@@ -1,0 +1,75 @@
+{
+  "_meta": {
+    "description": "Stage 3 category keyword classifier data. Extracted from ml_service/normalization/category_classifier.py.",
+    "note": "FIXED real bug: original had 'milk' in both Dairy and Beverages, and 'broccoli'/'mango'/'strawberries' in both Produce and Frozen. Dict iteration order silently picked a winner - not intentional design. Fix: 'frozen_signal_keywords' is checked FIRST by assign_category() against the RAW token (before unit/brand stripping reaches bare food name) - if a frozen-indicator word is present, category is Frozen immediately, before any other category keyword list is checked. This uses information (the raw token had 'FRZ'/'frozen' in it) that keyword-matching the bare canonical name alone can never recover. All other categories' keyword lists had their genuine duplicates removed (a term appearing in exactly one category is fine; the same term in two non-Frozen categories was still ambiguous and had to be resolved by picking the more specific category)."
+  },
+  "frozen_signal_keywords": [
+    "frozen", "frzn", "frz"
+  ],
+  "categories": {
+    "Produce": [
+      "berries", "berry", "apple", "apples", "orange", "mango", "banana",
+      "lettuce", "tomato", "onion", "garlic", "potato", "carrot", "spinach",
+      "cucumber", "pepper", "mushroom", "zucchini", "broccoli", "cauliflower",
+      "cabbage", "eggplant", "okra", "peas", "beans", "corn", "celery",
+      "coriander", "mint", "lemon", "lime", "grapes", "guava", "papaya",
+      "kiwi", "pear", "plum", "apricot", "cherry", "pomegranate", "watermelon",
+      "cantaloupe", "pineapple", "passionfruit", "dragonfruit", "starfruit",
+      "persimmon", "kale", "asparagus"
+    ],
+    "Dairy": [
+      "milk", "cheese", "yogurt", "dahi", "butter", "cream", "eggs",
+      "paneer", "lassi", "ghee", "curd", "brie", "feta", "ricotta",
+      "evaporated", "kefir", "buttermilk", "camembert"
+    ],
+    "Meat": [
+      "chicken", "beef", "mutton", "lamb", "pork", "salmon", "tuna",
+      "shrimp", "bacon", "sausage", "turkey", "qeema", "keema",
+      "gosht", "murg", "seekh", "kebab", "duck", "venison", "goat",
+      "crab", "lobster", "clam", "oyster"
+    ],
+    "Pantry": [
+      "pasta", "rice", "flour", "sugar", "salt", "oil", "sauce", "ketchup",
+      "mayo", "mustard", "bread", "oats", "lentils", "chickpeas", "beans",
+      "atta", "maida", "dal", "masala", "spice", "vinegar", "honey",
+      "peanut", "jam", "basmati", "chawal", "couscous", "millet", "barley",
+      "rye", "brown sugar", "maple", "tahini", "molasses", "coconut oil"
+    ],
+    "Frozen": [
+      "ice cream", "popsicle", "nuggets", "dumplings", "fish fillets"
+    ],
+    "Beverages": [
+      "juice", "soda", "coffee", "tea", "water", "chai",
+      "cranberry", "energy drink", "herbal", "green tea",
+      "instant coffee"
+    ],
+    "Bakery": [
+      "bread", "naan", "roti", "paratha", "chapati", "croissant", "bagel",
+      "muffin", "cake", "roll", "donut", "scone", "brownie", "cupcake",
+      "tart", "eclair"
+    ],
+    "Snacks": [
+      "chips", "pretzel", "trail mix", "popcorn", "granola", "rice cracker",
+      "cheese puff", "jerky", "fruit leather", "seaweed", "cracker"
+    ],
+    "Condiments & Sauces": [
+      "hummus", "tartar", "ranch", "worcestershire", "salsa", "harissa",
+      "gochujang", "bbq", "pesto", "fish sauce", "chili sauce"
+    ],
+    "Prepared Meals": [
+      "sandwich", "pizza slice", "sushi", "shawarma", "spring roll",
+      "pasta salad", "chicken curry", "lasagna", "biryani"
+    ],
+    "Breakfast Foods": [
+      "cornflakes", "muesli", "pancake", "waffle", "bagel with cream cheese",
+      "breakfast burrito", "scrambled eggs"
+    ],
+    "Confectionery": [
+      "chocolate", "candy", "marshmallow", "fudge", "truffle", "gummy",
+      "halva"
+    ],
+    "Baby Food": [
+      "formula", "baby cereal", "puree", "pouch", "toddler snack", "rusks"
+    ]
+  }
+}
