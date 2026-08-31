@@ -1,4 +1,13 @@
-# ml_service/normalization/llm_fallback.py
+"""
+Stage 3 Pass 3: LLM fallback via Groq.
+
+FIXED (Maaz, this session): GROQ_MODEL was "llama-3.1-8b-instant",
+confirmed DEPRECATED by Groq on 2026-06-17 (discovered during #28
+research - see Item_Extraction.md). This was dead on arrival. Updated
+to openai/gpt-oss-20b, the same model validated for Stage 2's
+food_classifier.py (#28) - reuses an already-tested, working choice
+rather than picking a new untested one for Stage 3.
+"""
 
 import os
 import re
@@ -7,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.models import NormalizationCache
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL   = "llama-3.1-8b-instant"
+GROQ_MODEL   = "openai/gpt-oss-20b"
 LLM_CONFIDENCE = 0.70
 
 
@@ -38,11 +47,8 @@ def _clean_llm_response(response_text: str) -> str:
     Returns the first line, title-cased.
     """
     text = response_text.strip()
-    # Take only the first line in case the LLM added an explanation
     text = text.split("\n")[0].strip()
-    # Remove surrounding quotes
     text = re.sub(r'^["\']|["\']$', '', text).strip()
-    # Remove trailing punctuation
     text = text.rstrip(".,;:")
     return text.title()
 
@@ -54,12 +60,10 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
 
     Returns (canonical_name, confidence) or (None, 0.0) on failure.
     """
-    # 1. Cache lookup
     cached = _cache_lookup(raw_token, db)
     if cached:
         return cached, LLM_CONFIDENCE
 
-    # 2. Groq API call
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         raise EnvironmentError("GROQ_API_KEY environment variable not set")
@@ -79,14 +83,13 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
             json={
                 "model": GROQ_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 20,    # canonical name is never > 5 words
-                "temperature": 0.0,  # deterministic — we want the same answer every time
+                "max_tokens": 20,
+                "temperature": 0.0,
             },
             timeout=10.0,
         )
         response.raise_for_status()
     except httpx.HTTPError as e:
-        # Network or API error — fail gracefully, don't crash the pipeline
         print(f"[llm_fallback] Groq API error for token '{raw_token}': {e}")
         return None, 0.0
 
@@ -96,7 +99,6 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
     if not canonical_name or len(canonical_name) < 2:
         return None, 0.0
 
-    # 3. Store in cache
     _cache_store(raw_token, canonical_name, db)
 
     return canonical_name, LLM_CONFIDENCE
