@@ -1,7 +1,16 @@
-# ml_service/expiry/predictor.py
+"""
+Stage 4: expiry prediction.
+
+CATEGORY_DEFAULT_STORAGE moved to data/category_default_storage.json
+(see that file's _meta). No other changes - the tiered lookup logic
+(exact -> category median -> hard default) and confidence scoring were
+already sound; this file's only real problem was the inline data.
+"""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import date, timedelta
 from statistics import median
@@ -12,24 +21,18 @@ from app.models import ShelfLifeReference
 from ml_service.normalization.normalizer import NormalizedItem
 
 
-# ── Constants ────────────────────────────────────────────────────────────────
+# -- Data --------------------------------------------------------------------
 
-CATEGORY_DEFAULT_STORAGE: dict[str, str] = {
-    "Produce":   "Fridge",    # fresh fruits/vegetables
-    "Dairy":     "Fridge",    # milk, yogurt, cheese
-    "Meat":      "Fridge",    # raw meat/fish
-    "Pantry":    "Pantry",    # dry staples
-    "Frozen":    "Freezer",   # frozen goods
-    "Beverages": "Pantry",    # unopened juice, soda, tea, coffee
-    "Bakery":    "Pantry",    # bread, baked goods
-    "Snacks":    "Pantry",    # chips, crackers, packaged snacks
-    "Condiments & Sauces": "Fridge",   # opened bottles/jars (ketchup, mayo, salsa)
-    "Prepared Meals":      "Fridge",   # cooked dishes, ready-to-eat
-    "Breakfast Foods":     "Pantry",   # cereals, pancake mix, oats
-    "Confectionery":       "Pantry",   # chocolates, candies, sweets
-    "Baby Food":           "Pantry",   # unopened formula, jars, pouches
-    "Other":               "Fridge",   # safe fallback
-}
+_DATA_PATH = Path(__file__).parent / "data" / "category_default_storage.json"
+
+
+def _load_category_default_storage() -> dict[str, str]:
+    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data["map"]
+
+
+CATEGORY_DEFAULT_STORAGE: dict[str, str] = _load_category_default_storage()
 
 BASE_CONFIDENCE_EXACT    = 0.95
 BASE_CONFIDENCE_CATEGORY = 0.70
@@ -39,7 +42,7 @@ DEFAULT_SHELF_LIFE_DAYS  = 7   # hard fallback when shelf_life_reference has no 
 REVIEW_THRESHOLD         = 0.60  # below this, flag_for_review = True
 
 
-# ── Output dataclass ─────────────────────────────────────────────────────────
+# -- Output dataclass ---------------------------------------------------------
 
 @dataclass
 class ExpiryPrediction:
@@ -51,7 +54,7 @@ class ExpiryPrediction:
     flag_for_review:   bool
 
 
-# ── Internal helpers ─────────────────────────────────────────────────────────
+# -- Internal helpers ----------------------------------------------------------
 
 def _resolve_storage_context(item: NormalizedItem, storage_context: str | None) -> str:
     """Use user-provided storage context if given; otherwise default by category."""
@@ -62,7 +65,7 @@ def _resolve_storage_context(item: NormalizedItem, storage_context: str | None) 
 
 def _level1_exact(canonical_name: str, storage_context: str, db: Session) -> int | None:
     """
-    Exact lookup: canonical_name + storage_context → shelf_life_days_avg.
+    Exact lookup: canonical_name + storage_context -> shelf_life_days_avg.
     Returns None if no matching row exists.
     """
     ref = (
@@ -75,7 +78,7 @@ def _level1_exact(canonical_name: str, storage_context: str, db: Session) -> int
 
 def _level2_category(category: str, storage_context: str, db: Session) -> int | None:
     """
-    Category fallback: all items in this category + storage_context → median shelf_life_days_avg.
+    Category fallback: all items in this category + storage_context -> median shelf_life_days_avg.
     Returns None if no rows found for this category/storage combination.
     """
     rows = (
@@ -88,7 +91,7 @@ def _level2_category(category: str, storage_context: str, db: Session) -> int | 
     return int(median(r[0] for r in rows))
 
 
-# ── Public API ───────────────────────────────────────────────────────────────
+# -- Public API -----------------------------------------------------------------
 
 def predict_expiry(
     item:            NormalizedItem,
@@ -109,41 +112,29 @@ def predict_expiry(
     Returns:
         ExpiryPrediction with predicted_expiry, shelf_life_days, confidence,
         source, storage_context, and flag_for_review.
-
-    Examples:
-        # Exact match: Strawberries + Fridge → 5 days → confidence 0.95
-        item = NormalizedItem("Strawberries", 1.0, "lb", "Produce", 1, 1.0)
-        result = predict_expiry(item, date(2025, 6, 1), db, storage_context="Fridge")
-        # ExpiryPrediction(predicted_expiry=date(2025, 6, 6), shelf_life_days=5,
-        #                  confidence=0.9025, source="exact_match", flag_for_review=False)
-
-        # Category fallback: unknown item in Produce + Fridge → median produce days
-        item = NormalizedItem("Exotic Mango Variety", 1.0, None, "Produce", 3, 0.70)
-        result = predict_expiry(item, date(2025, 6, 1), db)
-        # ExpiryPrediction(confidence=0.49, source="category_fallback", flag_for_review=True)
     """
     resolved_storage = _resolve_storage_context(item, storage_context)
 
-    # ── Level 1: Exact match ──────────────────────────────────────────────────
+    # -- Level 1: Exact match --
     shelf_life_days = _level1_exact(item.canonical_name, resolved_storage, db)
     if shelf_life_days is not None:
         base_confidence = BASE_CONFIDENCE_EXACT
         source = "exact_match"
 
-    # ── Level 2: Category fallback ────────────────────────────────────────────
+    # -- Level 2: Category fallback --
     else:
         shelf_life_days = _level2_category(item.category, resolved_storage, db)
         if shelf_life_days is not None:
             base_confidence = BASE_CONFIDENCE_CATEGORY
             source = "category_fallback"
 
-        # ── Level 3: Hard default ─────────────────────────────────────────────
+        # -- Level 3: Hard default --
         else:
             shelf_life_days = DEFAULT_SHELF_LIFE_DAYS
             base_confidence = BASE_CONFIDENCE_DEFAULT
             source = "hard_default"
 
-    # ── Final confidence + expiry ─────────────────────────────────────────────
+    # -- Final confidence + expiry --
     final_confidence = round(base_confidence * item.confidence, 4)
     predicted_expiry = purchase_date + timedelta(days=shelf_life_days)
     flag_for_review  = final_confidence < REVIEW_THRESHOLD
