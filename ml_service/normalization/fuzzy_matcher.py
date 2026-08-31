@@ -1,20 +1,17 @@
-# ml_service/normalization/fuzzy_matcher.py
+"""
+Stage 3 Pass 2: fuzzy matching against shelf_life_reference canonical names.
+
+FIXED: removed _load_canonical_names(), a dead
+function decorated with @lru_cache that unconditionally raised
+NotImplementedError and was never called by anything - confusing
+clutter sitting next to the actual working implementation
+(get_canonical_names) below. Deleted, not fixed - the real
+implementation already did the job correctly.
+"""
 
 from rapidfuzz import process, fuzz
 from sqlalchemy.orm import Session
-from functools import lru_cache
 from app.models import ShelfLifeReference
-
-
-@lru_cache(maxsize=1)
-def _load_canonical_names(db_session_hash: int) -> list[str]:
-    """
-    Load all canonical_name values from shelf_life_reference.
-    LRU-cached after first call — the reference table rarely changes.
-    Cache key is a hash of the db session to allow testing with different DBs.
-    """
-    # This is called once at startup via get_canonical_names() below
-    raise NotImplementedError("Use get_canonical_names() directly")
 
 
 _canonical_names_cache: list[str] | None = None
@@ -44,10 +41,10 @@ def pass2_fuzzy(cleaned_token: str, db: Session) -> tuple[str | None, float]:
     Confidence is score / 100.
 
     Examples:
-      "STRWBERY"  → ("Strawberries", 0.91)
-      "CHKN BRST" → ("Chicken Breast", 0.88)
-      "SALT"      → ("Salt", 1.00)   ← exact match would have been caught by Pass 1
-      "XYZ123"    → (None, 0.0)
+      "STRWBERY"  -> ("Strawberries", 0.91)
+      "CHKN BRST" -> ("Chicken Breast", 0.88)
+      "SALT"      -> ("Salt", 1.00)   <- exact match would have been caught by Pass 1
+      "XYZ123"    -> (None, 0.0)
     """
     if len(cleaned_token) <= SHORT_TOKEN_THRESHOLD:
         return None, 0.0
