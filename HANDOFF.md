@@ -12,175 +12,135 @@
 - Push back on bad ideas. Distinguish facts from speculation.
 - Individual per-file commits.
 - Ruthless mentor mode: stress-test everything, don't sugarcoat.
+- Present files at end of response as attachments, not pasted inline — so specific lines can be edited without re-pasting whole files.
 
 ---
 
 ## Project Summary
 
-Smart-Stock: portfolio/CV project. Reads grocery receipts, predicts expiry dates, reduces food waste. Full stack: React + TypeScript → FastAPI → PostgreSQL → ML Pipeline (now 7 stages, was 4 — see below).
+Smart-Stock: portfolio/CV project. Reads grocery receipts, predicts expiry dates, reduces food waste. Full stack: React + TypeScript -> FastAPI -> PostgreSQL -> ML Pipeline (7 stages).
 
-**Docs (update in place, don't regenerate):** PRD.md, Architecture.md, API_Spec.md, DB_Schema.md, ML_Pipeline.md, OCR_Training.md, NER_Training.md, Normalization_Training.md, Expiry_Training.md, README.md — **all 10 updated this session**, current as of this handoff.
+**Docs, current status:**
 
----
+| Doc | Status |
+|---|---|
+| PRD.md, Architecture.md, API_Spec.md, DB_Schema.md, ML_Pipeline.md, OCR_Training.md, NER_Training.md, README.md | Current as of previous handoff, unchanged this session |
+| Item_Extraction.md | Current - Stage 2, all 4 modules built, closed via #26-#29 |
+| Normalization.md (renamed from Normalization_Training.md) | Rewritten this session - full depth, real bugs documented, real eval results |
+| Expiry.md (renamed from Expiry_Training.md) | Rewritten this session - full depth, real bugs documented, real eval results |
 
-## MAJOR ARCHITECTURE CHANGE THIS SESSION
-
-Original 4-stage pipeline (OCR → NER → Normalization → Expiry) assumed single-line-per-item OCR format and a fine-tuned DistilBERT NER model tagging FOOD/QTY/UNIT/PRICE within that line.
-
-Testing against real PaddleOCR output on real Pakistani retail receipts broke both assumptions:
-
-1. OCR output is box-per-field, not line-per-item — needed row reconstruction.
-2. **No two stores share a receipt header format.** Seen: `Quantity|Price|Discount|Total`, `Qty|Item|Rate|Amount`, merged headers like `Quantity Price|Discount|Total`, `M.R.P|Price|Qty/Wt|Tax(%)|Disc. Amount`. A model trained on one synthetic format can't generalize to this — a **header-driven parser that reads each receipt's own column layout** does, deterministically, no training data needed.
-
-**Decision made and executed: DistilBERT NER retired.** Once row parsing extracts qty/price/discount/total structurally via header position, NER's job shrank to near-nothing. What's left in `item_name` (unit, brand, is_food) is solved with regex + fuzzy lexicon + LLM gate — no training data, no served model, generalizes better to novel item text than a small trained classifier would have.
+**Naming note:** `Normalization_Training.md`/`Expiry_Training.md` renamed to `Normalization.md`/`Expiry.md` this session - neither stage trains a model (3-pass lookup + rule-based tiers), the `_Training` suffix was a leftover from NER-era naming. `OCR_Training.md` keeps its name - TrOCR fine-tuning genuinely happened there.
 
 ---
 
-## Current Pipeline (7 stages)
+## Pipeline (unchanged structure, now further along)
 
 ```
 Receipt Image
-  → Stage 1: OCR (PaddleOCR, pretrained) — text + bounding boxes
-  → Stage 1.5: Row Reconstruction — deskew + y-position clustering into logical rows
-  → Stage 1.6: Prefilter — drops metadata rows (GST#, Invoice#, Payments, etc.)
-  → Stage 1.7: Row Parser — header-driven column mapping → {item_name, quantity, price, discount, total}
-  → Stage 2: Item Field Extraction — regex unit + fuzzy brand lexicon + LLM is_food gate → {is_food, brand, unit}
-       is_food=false → surfaced to user flagged "excluded", stops here (skips Stage 3+4)
-       is_food=true  ↓
-  → Stage 3: Normalization — lookup → fuzzy → LLM canonical naming (unchanged mechanism, now gated)
-  → Stage 4: Expiry Prediction — rule-based shelf-life lookup (unchanged)
-  → Structured Inventory Item
+  -> Stage 1: OCR (PaddleOCR, pretrained) - text + bounding boxes
+  -> Stage 1.5: Row Reconstruction - deskew + y-position clustering
+  -> Stage 1.6: Prefilter - drops metadata rows
+  -> Stage 1.7: Row Parser - header-driven column mapping -> {item_name, quantity, price, discount, total}
+  -> Stage 2: Item Field Extraction - regex unit + fuzzy brand lexicon + LLM is_food gate -> {unit, brand, is_food}
+       is_food=false/unknown -> surfaced to user flagged "excluded", stops here
+       is_food=true  |
+  -> Stage 3: Normalization - 3-pass lookup (map -> fuzzy -> LLM) -> NormalizedItem
+  -> Stage 4: Expiry Prediction - 3-tier rule-based lookup -> ExpiryPrediction
+  -> Structured Inventory Item
 ```
 
 ---
 
-## Stage-by-stage status
+## Stage-by-stage status (updated)
 
-### Stage 1 — OCR: ✅ CLOSED (unchanged this session)
+### Stages 1, 1.5, 1.6, 1.7 - unchanged this session, see previous handoff / respective docs. All DONE.
 
-PaddleOCR (pretrained PP-OCRv6), beat fine-tuned TrOCR on accuracy + latency. Full history in OCR_Training.md. No changes this session.
+### Stage 2 - Item Field Extraction: COMPLETE (closed #26, #27, #28, #29 this and prior sessions)
 
-### Stage 1.5 — Row Reconstruction: ✅ DONE (issue #14, closed)
+All 4 modules built and smoke-tested against real APIs (Groq):
+- `unit_extractor.py` (#26) - regex + lookup, OCR-corruption table flagged speculative/unvalidated
+- `brand_matcher.py` (#27) - lexicon-match-first order (bug fix: was strip-then-match, destroyed brands overlapping descriptor words like "Fresh St"), ~200-brand seed lexicon in `data/brand_lexicon.json`
+- `food_classifier.py` (#28) - Groq `openai/gpt-oss-20b`, selected after testing 4 candidates (Groq/Gemini/2x OpenRouter). Real bug found+fixed: `max_tokens=100` was truncating long reasoning traces on ambiguous items, causing false UNKNOWN - raised to 300.
+- `extractor.py` (#29) - orchestrates the three above. `remaining_text`-with-fallback-to-`item_name` design for the food classifier input. Measured latency: ~658ms/item avg (food classification dominant) - flagged as a real problem for #25, sequential calls across a 15-20 item receipt would blow PRD.md Section 6's 10-second budget.
 
-`rec_boxes`/`rec_polys` confirmed present in PaddleOCR output (weren't previously extracted). Built deskew correction (median skew angle from box polygons, corrects y-position drift) + y-position clustering. Validated on 4 real receipts — correctly reconstructs rows even with real photograph skew.
-Module: `ml_service/ocr/row_reconstruction.py`
+Full detail, bug records, and worked examples: Item_Extraction.md.
 
-### Stage 1.6 — Prefilter: ✅ DONE, relocated
+### Stage 3 - Normalization: COMPLETE, interface rewritten, real bugs fixed, evaluated (this session)
 
-Moved from `ml_service/ner/prefilter.py` → `ml_service/parsing/prefilter.py` (never NER-specific, just ran before it). Rule-based keyword/regex drop. Runs on reconstructed rows, excludes the header row (Row Parser consumes header before prefilter sees the rest, otherwise header keywords collide with `DROP_KEYWORDS`).
-Known gap: doesn't catch every leak (e.g. "Ex1. Amt", "HBL") — low priority, doesn't corrupt item data.
+**Was structurally broken** - `normalize_entity()` had the old NER-era signature `(food_tokens: list[str], raw_quantity, raw_unit)`, which could never receive what the real pipeline (Stage 1.7 -> Stage 2) actually produces. Rewritten to `normalize_entity(item_name: str, quantity: float, unit: str | None, db) -> NormalizedItem | None`.
 
-### Stage 1.7 — Row Parser: ✅ DONE (issue #22, ready to close via PR)
+Real bugs found and fixed this session:
+1. `GROQ_MODEL = "llama-3.1-8b-instant"` in `llm_fallback.py` - confirmed deprecated by Groq (found during #28 research). Fixed to `openai/gpt-oss-20b`.
+2. `CATEGORY_KEYWORDS` had genuine collisions (`"milk"` in both Dairy/Beverages; `"broccoli"`/`"mango"`/`"strawberries"` in both Produce/Frozen) - dict iteration order silently picked a winner. Fixed with a frozen-signal priority check: `assign_category()` now checks the raw (unstripped) `item_name` for `frozen`/`frzn`/`frz` before any keyword matching - using information the canonical name alone can't recover.
+3. `abbreviation_map.py` had duplicate dict keys (harmless but sloppy) - deduplicated.
+4. `fuzzy_matcher.py` had dead broken code (`_load_canonical_names`, always raised NotImplementedError) - deleted.
+5. `preprocessor.py` duplicated Stage 2's unit-stripping - removed, now only strips quality/dietary modifiers.
+6. `unit_normalizer.py` interface simplified to canonicalization-only (`normalize_unit(unit) -> unit`), since Stage 2 already extracts units.
 
-Header-driven column mapping. Fuzzy header detection (strict `ratio` first, `partial_ratio` fallback for merged tokens like "Quantity Price" — fixes a real bug where strict-only matching caused single-word headers like "Discount" to false-positive against "Total"). x-position nearest-match for column assignment. OCR noise cleanup in numeric tokens (`"11^9.00"`→119.00, `"Rs7.948.80"`→7948.80) while still rejecting real text. Split-row merge (item name and its numbers sometimes print on separate physical lines, sometimes same line — both handled). Fallback path (magnitude/position heuristics) when no header detected.
-**Validated: output matches ground truth exactly on all fields across 1-4.jpg (4 real receipts).**
-Module: `ml_service/parsing/row_parser.py`
-**Known unsupported format (issue #23, open):** 5.jpg — 2-line header, new `Tax(%)` column, merged numeric sub-values (`"0.00(0) 3.00"`), fused item-code+name. Deferred, needs separate parsing path, not a patch.
+All data extracted to `data/*.json` files: `abbreviation_map.json` (~580 entries), `category_keywords.json`, `unit_map.json`, `eval_test_cases.json`.
 
-### Stage 2 — Item Field Extraction: ⏳ DESIGNED, NOT YET IMPLEMENTED
+**Real eval run (first time, live DB + real Groq):** 36 test cases, 32/36 exact-match correct (88.9%), but 3 of the 4 failures are test-fixture errors (LLM gave reasonable-but-differently-phrased answers: "Strawberry" vs "Strawberries", "Yogurt" vs "Plain Yogurt", correct Frozen category but compound-name mismatch on "Frozen Broccoli"). Corrected accuracy: 35/36 = 97.2%. One real unresolved finding: `ANDA DOZEN -> Andouille` (Pass 3 LLM reliability gap, not root-caused).
 
-Replaces retired NER. Output contract: `{is_food: bool, brand: str | None, unit: str | None}`. Design decided, code not written:
+Full detail: Normalization.md.
 
-- **Unit**: regex extraction from item_name, handles known OCR corruption (`ml`→`M1`, `l`→`1`). No model.
-- **Brand**: fuzzy lexicon match (rapidfuzz, reuses Stage 3 infra). No labeled data — lexicon-based, inspectable/extendable. **Open question: where does the brand lexicon come from** — manually curated, or grown from real receipts as seen? Not decided.
-- **is_food**: LLM gate, binary classification. Replaces old Phase B "NOT_FOOD gate" concept (which was going to live in Stage 3 Pass 3 — now correctly placed at Stage 2 instead, so Stage 3 doesn't re-ask the same question).
-  Empty stub files exist: `ml_service/item_extraction/{unit_extractor,brand_matcher,food_classifier,extractor}.py` — none have implementation yet.
+### Stage 4 - Expiry Prediction: COMPLETE, core logic was already sound, dependency chain fixed, evaluated (this session)
 
-**Distinct from Stage 3 Pass 3's LLM call** — Stage 2 asks "is this food at all", Stage 3 Pass 3 asks "what's the canonical name for this (already-confirmed) food item". Different questions, both needed, not merged (yet — flagged as a possible future optimization, not decided).
+`predict_expiry()`'s tiered lookup logic (exact -> category median -> hard default) did not need a rewrite. Two real problems, both fixed:
+1. Depended on `NormalizedItem` from the broken Stage 3 interface - unblocked once Stage 3 was fixed.
+2. `evaluate.py` was not actually an integration test - it hand-built `NormalizedItem` objects directly, bypassing `normalize_entity()` entirely. Would have passed 100% even with Stage 3 completely broken. Fixed: now calls the real `normalize_entity()` first.
 
-### Stage 3 — Normalization: ✅ BUILT, mechanism unchanged, NOW GATED
+`CATEGORY_DEFAULT_STORAGE` extracted to `data/category_default_storage.json`.
 
-3-pass (abbreviation map ~800 entries → rapidfuzz → LLM fallback). **Now only runs for items where Stage 2 returns `is_food=true`.** Still untested against real Stage 1.5–2 output (only synthetic test cases in `evaluate.py`).
+**Real eval run (first genuine Stage 3+4 integration test):** 16 cases, 16/16 correct within +/-2 days (100%), avg confidence 0.934, 0 flagged for review. Confirms the tiered fallback and confidence-propagation math (`final_confidence = tier_base x item.confidence`) work correctly.
 
-### Stage 4 — Expiry Prediction: ✅ BUILT, unchanged
-
-Rule-based 3-level lookup + confidence scoring. Still untested against real pipeline output.
-
----
-
-## DB / API changes made this session (docs updated, code NOT yet migrated)
-
-- `inventory_items` table needs new `brand VARCHAR(255)` column — migration SQL given in DB_Schema.md, **not yet run**.
-- `price`, `discount`, `total`, `is_food` confirmed **not persisted** — extracted internally, never written to DB.
-- `is_food=false` items: **surfaced to user, not silently dropped** (decision made this session) — confirmation modal shows them flagged "detected but excluded — not a food item." API response for `/receipts/upload` needs `brand`, `is_food` fields added to `extracted_items[]` — documented in API_Spec.md, **Pydantic schemas not yet updated in code**.
+Full detail: Expiry.md.
 
 ---
 
-## Folder structure (already executed by user, confirmed current)
+## Real findings this session, carried forward as open items
 
-```
-ml_service/
-├── ocr/
-│   ├── model.py                  # empty stub — PaddleOCR loader, needs extracting from notebook
-│   ├── row_reconstruction.py     # empty stub — cluster_rows_deskewed logic exists in paddleocr.ipynb, needs extracting into this module
-│   ├── paddleocr.ipynb           # working notebook, has validated row reconstruction code
-│   └── kaggle_trocr.ipynb        # historical, TrOCR
-├── parsing/
-│   ├── prefilter.py              # DONE, moved from ner/
-│   └── row_parser.py             # DONE, moved from ocr/
-├── item_extraction/
-│   ├── unit_extractor.py         # empty stub
-│   ├── brand_matcher.py          # empty stub
-│   ├── food_classifier.py        # empty stub
-│   └── extractor.py              # empty stub
-├── normalization/                # unchanged, existing files
-├── expiry/                       # unchanged, existing files
-├── ner/
-│   └── archive/
-│       └── ner-training.ipynb    # historical record only
-├── models/
-│   └── trocr-smart-stock/        # retired TrOCR weights — cleanup decision deferred, not urgent
-└── pipeline.py                   # EMPTY — orchestrator not yet wired for new stage order
-```
-
-**Note:** `paddleocr.ipynb`'s validated logic (deskew + clustering) has NOT yet been extracted into `ml_service/ocr/row_reconstruction.py` as an importable module — it currently only exists as notebook cells. Same applies to `model.py` (PaddleOCR loader) — currently just a touch'd empty file.
+1. **Stage 2 latency problem (#25 blocker):** ~658ms/item avg for food classification, sequential. A 15-20 item receipt would take 10+ seconds for Stage 2 alone, breaking the PRD's 10-second upload budget. Decision made: start with Option A (concurrent/async calls per receipt), not batching. Concurrency doesn't touch the already-tested single-item `food_classifier.py` contract; batching would require a prompt/parser redesign, untested. Groq's `openai/gpt-oss-20b` free tier: RPM 30, RPD 1K, TPM 8K, TPD 200K - concurrency alone will need real load-testing against these limits before calling it production-ready; batching may become necessary later, not deciding that now.
+2. **Pass 3 (`llm_fallback.py`) reliability gap:** `ANDA DOZEN -> Andouille`, unexplained, not root-caused. Watch for a pattern.
+3. **Pass 3 testability:** free-text LLM output can't be reliably tested with exact-match string assertions - a structural limitation, not a bug. Future eval work should consider fuzzy/semantic matching for Pass 3 cases specifically.
 
 ---
 
 ## GitHub issue status (as of this handoff)
 
-**Open, valid, keep:**
+**Closed this session (or prior, confirmed closed):** #26, #27, #28, #29.
 
-- #16 — Confidence-score garbage-line filter needs real distribution analysis (blocked on row-level text, which now exists — unblocked, ready to pick up)
-- #23 — 5.jpg multi-line header + Tax(%) format not supported
+**Open, unchanged from previous handoff:**
+- #16 - confidence-score garbage-line filter, unblocked, not picked up yet
+- #23 - 5.jpg multi-line header + Tax(%) format, deferred
+- #19 - user is deleting this directly (superseded by #32, per user decision last session)
 
-**Ready to close via PR (user pushing code + docs this session):**
-
-- #22 — Row parser deliverable — DONE, validated, ready to close
-
-**To close as not-planned/superseded (user doing this via PR):**
-
-- #18 — Phase B NOT_FOOD gate in Stage 3 LLM fallback — SUPERSEDED, is_food is now Stage 2's job
-- #19 — End-to-end validation Stage 3+4 — STALE, references retired NER + closed #18 as dependency, needs refiling with corrected deps
-- #20 — Export DistilBERT NER to ONNX — DEAD, model retired
-
-**Also i added these new issues to repo. I added these 10 issues, with proper description.**
-
-1. Wire `ml_service/pipeline.py` orchestrator — stitch Stage 1→1.5→1.6→1.7→2→3→4 with is_food gating
-2. Implement `unit_extractor.py` — regex unit extraction
-3. Implement `brand_matcher.py` — fuzzy lexicon match (needs lexicon data source decided first)
-4. Implement `food_classifier.py` — LLM is_food gate
-5. Implement `extractor.py` — orchestrates Stage 2's three components
-6. DB migration: add `brand` column to `inventory_items`
-7. Update Pydantic schemas: add `brand`, `is_food` to `/receipts/upload` response
-8. Refile end-to-end validation (replaces #19) with corrected dependency chain
-9. Re-measure pipeline latency end-to-end (flagged unmeasured in README/ML_Pipeline.md)
-10. Build labeled is_food sample to measure Stage 2's LLM gate accuracy
+**Open, from the 10 filed last session, status:**
+1. `pipeline.py` orchestrator (#25) - NEXT UP. Needs Stage 2's concurrency design (see above) built in, not bolted on after.
+2. `unit_extractor.py` - done (#26)
+3. `brand_matcher.py` - done (#27)
+4. `food_classifier.py` - done (#28)
+5. `extractor.py` - done (#29)
+6. DB migration: add `brand` column - still not run
+7. Update Pydantic schemas (`brand`, `is_food` in `/receipts/upload` response) - still not done
+8. Refile end-to-end validation (#32, replaces #19) - open, not started; now realistically unblocked since Stage 2/3/4 all individually work
+9. Re-measure pipeline latency end-to-end (#33) - partially informed by Stage 2's ~658ms/item finding, but no full pipeline run yet
+10. Build labeled `is_food` sample (#34) - not started, still blocking real Stage 2 accuracy measurement
 
 ---
 
-## Immediate Next Steps (in order)
+## Immediate next steps (in order)
 
-1. I already Filed the 10 new issues above.
-2. Pick up implementation — recommended order: #2/#3/#4/#5 (Stage 2 components, since they're pure design-done/code-missing) before #1 (orchestrator, needs Stage 2 working first) before #6/#7 (DB/API wiring) before #8/#9/#10 (validation/measurement, needs the pipeline actually running). Or go through all the issues, and give order for which issues to do in which order.
+1. **#25 - `pipeline.py` orchestrator.** Wire Stage 1 -> 1.5 -> 1.6 -> 1.7 -> 2 -> 3 -> 4, with `is_food` gating (Stage 3/4 only run when Stage 2's `is_food` is True; False/None/unknown both route to "surfaced, excluded"). Must include concurrent Stage 2 food-classification calls per receipt (Option A, per above) - this is a design requirement for #25, not an afterthought.
+2. Once #25 exists and runs: #6/#7 (DB/API wiring), then #8/#9/#10 (validation/measurement now that there's a real pipeline to measure).
+3. Real-receipt validation (1-4.jpg) for all of Stage 2/3/4 - flagged as a known gap in every doc this session, still not done. Real test data, not hand-picked strings.
 
 ---
 
 ## Key decisions made this session (context for future reference, not to be re-litigated without new evidence)
 
-- DistilBERT NER retired — full reasoning in ML_Pipeline.md §0, preserved historically in NER_Training.md (retirement banner added).
-- Row Parser (header-driven, per-receipt column detection) chosen over any fixed-position or single-model approach — real receipts have no standard format, confirmed via 10+ real header samples across different formats.
-- Item Field Extraction uses regex/lexicon/LLM, explicitly NOT a trained model — unit and brand are deterministic/lookup problems, is_food has no labeled data and an LLM gate generalizes better than a small classifier would.
-- `is_food=false` items are surfaced to the user (transparent), not silently dropped.
-- `brand` gets persisted to DB (new column) — decided useful, cheap to store.
-- `price`/`discount`/`total` extracted but never persisted — confirmed out of DB_Schema.md scope from the start (predates this session).
+- Stage 2's `food_classifier.py` model: Groq `openai/gpt-oss-20b`, chosen over Gemini and 2 OpenRouter free candidates after real testing (see Item_Extraction.md). Not locked in blind.
+- Stage 2 latency fix: concurrency (Option A) before batching (Option B) - additive, doesn't touch a working tested contract. Batching deferred, not rejected outright.
+- Stage 3/4 interface rewrite: `normalize_entity(item_name, quantity, unit, db)` replaces the old NER-era signature. This is now the permanent contract Stage 3 expects from the pipeline orchestrator.
+- Frozen-signal category fix: checked on raw, unstripped `item_name`, before any keyword-based category matching - not a keyword-list edit, a structural fix, because the signal is lost once "frozen" gets stripped as a quality modifier.
+- Docs renamed: `Normalization_Training.md` -> `Normalization.md`, `Expiry_Training.md` -> `Expiry.md`. Naming convention going forward: `_Training` suffix only for docs describing genuine model fine-tuning (OCR_Training.md, NER_Training.md - historical).
+- Test-fixture errors are documented as such, not silently patched to make an eval look better - both the raw and corrected accuracy numbers are reported in Normalization.md.
