@@ -2,7 +2,7 @@
 Stage 3 evaluation harness.
 Usage: python -m ml_service.normalization.evaluate
 
-REWRITTEN (Maaz, this session):
+REWRITTEN:
   - Test cases moved to data/eval_test_cases.json (was inline TEST_CASES).
   - Calls now use the rewritten normalize_entity(item_name, quantity,
     unit, db) signature (see normalizer.py) instead of the old

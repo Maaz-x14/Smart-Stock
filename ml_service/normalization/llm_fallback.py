@@ -83,7 +83,7 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
             json={
                 "model": GROQ_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 20,
+                "max_tokens": 300,
                 "temperature": 0.0,
             },
             timeout=10.0,
@@ -97,6 +97,7 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
     canonical_name = _clean_llm_response(content)
 
     if not canonical_name or len(canonical_name) < 2:
+        print(f"[llm_fallback debug] raw_token={raw_token!r} raw_content={content!r} cleaned={canonical_name!r}")
         return None, 0.0
 
     _cache_store(raw_token, canonical_name, db)
