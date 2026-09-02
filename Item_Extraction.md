@@ -1,7 +1,7 @@
 # Item_Extraction.md — Stage 2: Item Field Extraction
 
-**Version:** 1.0  
-**Status:** ✅ Complete. All four Stage 2 modules implemented and smoke-tested: `unit_extractor.py`, `brand_matcher.py`, `food_classifier.py`, `extractor.py`. Not yet validated against real receipt data or the real #34 labeled dataset.
+**Version:** 1.1  
+**Status:** ✅ Complete. All four Stage 2 modules implemented and smoke-tested: `unit_extractor.py`, `brand_matcher.py`, `food_classifier.py`, `extractor.py`. Batch classification (Issue #46) validated against 2 real receipts via `test_pipeline_local.py` — 36 items total, correct classification, zero Groq 429s. Still not validated against the real #34 labeled dataset.
 
 ---
 
@@ -214,6 +214,30 @@ Groq's `openai/gpt-oss-20b` returns a reasoning trace on a **separate `reasoning
 
 **Related, not blocking implementation:** #34 — build a labeled `is_food` sample to actually measure this gate's accuracy at scale. No labeled data exists yet; the 15+4 items tested so far are hand-picked sanity checks, not a real accuracy measurement.
 
+### Batch classification (Issue #46 — added this session)
+
+**Problem:** `classify_is_food()` alone makes one Groq call per item. At 15-20 items/receipt this exhausted Groq's free-tier TPM (8000/min) — confirmed via `x-ratelimit-remaining-tokens` dropping toward zero mid-receipt and a wall of 429s in `test_pipeline_local.py`. An earlier fix attempt (`STAGE2_CONCURRENCY`, bounding parallel requests via `asyncio.Semaphore`) did not solve this — concurrency bounds parallel requests, not tokens/minute, so the same total token volume still blew the TPM budget regardless of concurrency setting.
+
+**Fix:** `classify_is_food_batch(item_names: list[str])` sends N items in one Groq call; `classify_is_food_chunked(item_names, batch_size=5)` splits a full receipt into chunks of 5 and calls `classify_is_food_batch` per chunk. Chunk size 5 chosen over one-call-per-receipt: cuts call count ~5x (the main goal) while keeping index-tracking trivial and hallucination/misordering risk low on the array response — a larger single batch (e.g. all 20 items) was judged higher-risk for the model losing track of index alignment, though this wasn't empirically tested at larger sizes.
+
+**Batch prompt design:** XML-structured (`<role>`, `<instructions>`, `<examples>`, `<output_format>`), per Anthropic prompt-engineering guidance for prompts mixing instructions/examples/context. Two multishot examples included. Key rules beyond the single-item prompt: strict input/output length match, 1-based index correspondence, and an explicit instruction not to let earlier items bias judgment on later ones ("no theme bias").
+
+**Fail-safe parsing:** `_parse_batch_response()` requires exact array length match and valid, unique 1-based indices covering every position — any deviation (wrong length, duplicate index, malformed entry) fails the **entire batch** to `UNKNOWN`, not just the malformed entries. No partial trust within a batch, matching the existing single-item philosophy of "no partial trust, no guessing at malformed output."
+
+**`reasoning_effort="low"` also added** to both single-item and batch Groq calls in this same change — a separate, real bug found during Issue #46 testing: gpt-oss-20b's reasoning trace was observed consuming the *entire* token budget on certain prompts, producing empty content that failed downstream parsing regardless of rate limiting. `reasoning_effort` is a real, documented Groq API parameter. **Caveat found in follow-up testing (see below): this reduces but does not eliminate the failure mode** — see Section 4.2.
+
+**Validation:** 2 real receipts via `test_pipeline_local.py`, 36 items total (20 + 16). Zero Groq 429s in either run — Groq's `x-ratelimit-remaining-tokens` header stayed healthy throughout (never dropped below ~3300 of 8000). All non-food/junk OCR lines correctly excluded; all resolvable food items correctly classified `is_food=True`.
+
+### 4.2 Known gap: reasoning-loop failure on severely corrupted OCR input
+
+`reasoning_effort="low"` does not fully prevent Groq's `gpt-oss-20b` from entering a token-exhausting reasoning loop on certain inputs. Observed on 2/36 tested items, both with severely corrupted OCR (a hand blocking part of the physical receipt during photo capture): `'Kimtiaz'` and `'Peek Frns Cocnt Crnch Farm Hose F/P'`.
+
+Confirmed via response metadata (`finish_reason='length'`, `completion_tokens=300` = the max_tokens ceiling, `reasoning_tokens=298` of that 300): the model's reasoning trace enters a literal repetition loop ("Could be X but maybe Y?? Could be X but maybe Y??" repeated near-verbatim 5-6 times) and never reaches content before hitting the token limit. This is a genuine model behavior on ambiguous input, not a config/prompt bug — `reasoning_effort` caps *effort level*, not a hard reasoning-token ceiling, and Groq did not bound this specific failure mode.
+
+This affects Stage 2's `food_classifier.py` and Stage 3's `llm_fallback.py` identically (same model, same failure class). In the observed cases it surfaced via Stage 3 (the item passed Stage 2's `is_food=True` gate but then failed to normalize in `llm_fallback.py`). Both stages fail safe correctly on this failure — item surfaced to the user with null downstream fields, never dropped or silently wrong.
+
+**On a second test receipt with cleaner OCR (no physical obstruction), 16/16 items resolved with zero failures of this kind** — supports the working conclusion that this is specifically triggered by genuinely unresolvable/severely corrupted input, not a systemic issue with the fix. Tracked as a separate low-priority follow-up (GitHub Issue #48) rather than reopening #46 — not chasing further right now given low observed frequency and correct fail-safe behavior.
+
 ## Model selection (Phase 1 — completed)
 
 Original 7-candidate shortlist was cut down before testing: several (Qwen3 14B/8B, Gemma 3 12B, Nemotron Nano 9B V2, GLM-4.5-Air) turned out to be stale/unconfirmed on Groq's own docs, and Llama 3.1 8B Instant was found **deprecated by Groq on 2026-06-17** (replaced by GPT-OSS 20B). Broader OpenRouter free-tier browsing also surfaced mostly large agentic/reasoning models, embeddings, and TTS — wrong shape for a small binary classifier. Final tested set: 4 candidates across Groq, Gemini, and OpenRouter.
@@ -289,9 +313,13 @@ Implementation pending once the prompt and provider abstraction are finalized.
 
 ## 5. Module: `extractor.py`
 
-**Status:** ✅ Built, smoke-tested. Closed via #29.
+**Status:** ✅ Built, smoke-tested. Closed via #29. Batch entry point added Issue #46.
 
 **Role:** Orchestrates the three components above into the Stage 2 contract.
+
+**Two entry points now exist:**
+- `extract_item_fields(item_name)` — single-item, ONE Groq call. Kept for standalone/debug/test use; also the per-item building block the batch path uses for unit/brand extraction.
+- `extract_item_fields_batch(item_names: list[str])` — the production entry point `pipeline.py` calls. Unit/brand extraction still runs per-item (local, regex/lexicon-based, not the bottleneck — no reason to batch). Only the is_food classification step is batched via `classify_is_food_chunked(..., batch_size=5)`. Order preserved item-for-item throughout.
 
 ```python
 def extract_item_fields(item_name: str) -> ItemFields:
@@ -334,7 +362,9 @@ Testing the empty-`remaining_text` fallback (`"NESTLE 1L"`) surfaced a genuine b
 
 First call (`ORG STRWBRY 1LB`) excluded — ~6800ms, presumed cold-start/connection warm-up (client init, DNS/TLS), not representative of steady-state cost. Unconfirmed — not re-tested to isolate the cause.
 
-**Implication for #25 (pipeline orchestrator):** unit/brand extraction is negligible (<1ms combined); food classification dominates entirely at ~650-700ms/item. A receipt with 15-20 items classified **sequentially** would take ~10-14+ seconds for Stage 2 alone, breaking PRD.md §6's 10-second upload budget. Needs concurrent/batched classification calls when wired into the real pipeline — not addressed in `extractor.py` itself, which is correctly scoped to a single item.
+**Implication for #25 (pipeline orchestrator):** unit/brand extraction is negligible (<1ms combined); food classification dominates entirely at ~650-700ms/item per single-item call. A receipt with 15-20 items classified **sequentially** would take ~10-14+ seconds for Stage 2 alone, breaking PRD.md §6's 10-second upload budget.
+
+**Resolved via Issue #46:** `extract_item_fields_batch()` (see Section 5 above) batches is_food classification in chunks of 5, cutting Groq calls from N to ceil(N/5) per receipt — this was the actual fix applied in `pipeline.py`, not per-item concurrency (an earlier concurrency-only approach was tried first and found insufficient — see Section 4.1). Per-item latency numbers above still describe the underlying single-call cost; end-to-end Stage 2 latency after batching has not yet been formally re-benchmarked (see HANDOFF.md open items).
 
 ---
 

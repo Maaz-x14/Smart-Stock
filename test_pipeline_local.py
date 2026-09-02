@@ -11,8 +11,8 @@ logging.getLogger("paddlex").setLevel(logging.WARNING)
 
 IMAGE_PATHS = [
     # "/home/maazahmad/Desktop/Smart-Stock/inference/1.jpg",
-    "/home/maazahmad/Desktop/Smart-Stock/inference/2.jpg",
-    # "/home/maazahmad/Desktop/Smart-Stock/inference/3.jpg",
+    # "/home/maazahmad/Desktop/Smart-Stock/inference/2.jpg",
+    "/home/maazahmad/Desktop/Smart-Stock/inference/3.jpg",
     # "/home/maazahmad/Desktop/Smart-Stock/inference/4.jpg",
 ]
 

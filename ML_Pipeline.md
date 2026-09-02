@@ -243,19 +243,30 @@ Module: `ml_service/item_extraction/brand_matcher.py`
 
 ### is_food Gate
 
-LLM call, binary classification:
+LLM call, binary classification. Two entry points:
 
 ```
-Prompt: "Is '{item_name}' a food or grocery item? Reply yes or no."
+Single-item (extract_item_fields()):
+  Prompt: "Is '{item_name}' a food or grocery item? Reply yes or no."
+  -> ONE Groq call per item.
+
+Batched (extract_item_fields_batch()), production path since Issue #46:
+  -> ONE Groq call per chunk of up to 5 items, numbered-list-in /
+     JSON-array-out, strict index correspondence, fail-safe to
+     UNKNOWN for the whole chunk on any malformed/wrong-length response.
 ```
+
+**Why batching, not concurrency:** an earlier design considered concurrent per-item calls (bounded by a semaphore) to fit the pipeline's 10-second upload budget (see §9's latency discussion, and Item_Extraction.md's original per-item latency measurement of ~658ms/item). Real testing during `pipeline.py`'s build (#25) found concurrency insufficient — it bounds parallel *requests*, not *tokens/minute*, and Groq's free-tier TPM limit (8000/min) was exhausted regardless of concurrency setting once total token volume across ~15-20 items was considered. Batching (chunk size 5) fixes this directly by cutting Groq calls ~5x per receipt. Full incident/fix record: Item_Extraction.md §4.1, HANDOFF.md.
 
 Module: `ml_service/item_extraction/food_classifier.py`
 
 **Distinct from Stage 3 Pass 3's LLM call** — Stage 2 asks "is this food at all", Stage 3 Pass 3 asks "what's the canonical name for this (already-confirmed) food item". Different questions; both needed. `is_food = false` skips Stage 3 and Stage 4 entirely — no shelf-life to predict for a non-food item — and the item is surfaced to the user in the confirmation modal flagged as excluded, rather than silently dropped.
 
-Module: `ml_service/item_extraction/extractor.py` orchestrates all three and returns the combined `{is_food, brand, unit}` result.
+Module: `ml_service/item_extraction/extractor.py` orchestrates all three and returns the combined `{is_food, brand, unit}` result. `extract_item_fields_batch()` is the production entry point `pipeline.py` calls; unit/brand extraction still runs per-item (local, not the bottleneck), only is_food classification is batched.
 
 **Open consideration, not yet decided:** Stage 2's is_food call and Stage 3 Pass 3's canonical-naming call could be merged into one LLM round-trip for is_food=true items. Not implemented — keeping them separate is simpler to reason about and debug first.
+
+**Known gap, low priority:** Groq's `gpt-oss-20b` can enter a reasoning-loop failure on severely corrupted OCR input, consuming its full token budget without emitting content, even with `reasoning_effort="low"` applied. Observed on 2/36 items in real pipeline testing, both tied to a hand blocking part of the receipt during photo capture. Pipeline fails safe correctly (item surfaced, not dropped). Tracked as GitHub Issue #48, not actively being worked. Full detail: Item_Extraction.md §4.2.
 
 ---
 
@@ -272,15 +283,15 @@ Convert raw, abbreviated, retailer-specific food tokens into canonical food name
 ### Method: Three-Pass Approach
 
 **Pass 1 — Direct Lookup**
-Curated abbreviation dictionary (~800 entries), handles ~65% of real-world cases.
+Curated abbreviation dictionary (~580 entries after dedup), handles the large majority of real-world cases (97.2% canonical match rate + LLM fallback combined in the latest eval — see Normalization.md).
 
 **Pass 2 — Fuzzy Matching**
 `rapidfuzz` fuzzy-match against `shelf_life_reference.canonical_name` values, threshold ≥ 80.
 
 **Pass 3 — LLM Cleaning (Fallback)**
-For tokens Pass 1 and 2 cannot resolve, sends to LLM for canonical name resolution. Cached in `normalization_cache`.
+For tokens Pass 1 and 2 cannot resolve, sends to LLM for canonical name resolution. Cached in `normalization_cache`. Runs **per-item, not batched** — a deliberate scope decision (Issue #46) distinct from Stage 2's batching, since Pass 3's call volume is naturally low (cache/fuzzy-match miss only) and batching here would trade accuracy risk for throughput this stage doesn't need.
 
-**Untested against real pipeline output as of this writing** — was validated only against synthetic test cases (`evaluate.py`). Should be re-validated now that Stage 1.5–2 produce real structured input.
+**Validated against real pipeline output** (this session, via `test_pipeline_local.py`) — 2 real receipts, 34/36 items resolved correctly end-to-end. See Normalization.md §9.1 for detail.
 
 ### Unit / Category
 
@@ -290,9 +301,9 @@ Unchanged from v1.0 — see original `UNIT_MAP` and `CATEGORY_KEYWORDS` in `ml_s
 
 ## 8. Stage 4: Expiry Prediction
 
-Unchanged from v1.0. Rule-based lookup from `shelf_life_reference` + confidence scoring. See `ml_service/expiry/predictor.py` and Expiry_Training.md.
+Unchanged from v1.0. Rule-based lookup from `shelf_life_reference` + confidence scoring. See `ml_service/expiry/predictor.py` and Expiry.md.
 
-**Untested against real pipeline output as of this writing** — same status as Stage 3.
+**Validated against real pipeline output** as part of this session's `test_pipeline_local.py` runs, alongside Stage 3 — see Expiry.md / Normalization.md §9.1.
 
 ---
 
@@ -302,7 +313,8 @@ Unchanged from v1.0. Rule-based lookup from `shelf_life_reference` + confidence 
 
 ```
 ml_service/
-├── pipeline.py               # Orchestrates all stages (currently empty — rewiring in progress)
+├── pipeline.py               # Orchestrates all stages (#25 - built and wired this session,
+│                              #   validated against 2 real receipts via test_pipeline_local.py)
 ├── ocr/
 │   ├── model.py              # PaddleOCR loader + inference
 │   └── row_reconstruction.py # Deskew + y-clustering (Stage 1.5)
@@ -312,12 +324,13 @@ ml_service/
 ├── item_extraction/
 │   ├── unit_extractor.py     # Regex unit parsing
 │   ├── brand_matcher.py      # Fuzzy lexicon match
-│   ├── food_classifier.py    # LLM is_food gate
-│   └── extractor.py          # Orchestrates the above (Stage 2)
+│   ├── food_classifier.py    # LLM is_food gate - single-item AND batched (chunk size 5, Issue #46)
+│   └── extractor.py          # Orchestrates the above (Stage 2) - extract_item_fields_batch()
+│                              #   is the production entry point pipeline.py calls
 ├── normalization/
 │   ├── abbreviation_map.py
 │   ├── fuzzy_matcher.py
-│   └── llm_fallback.py       # Stage 3 Pass 3 — distinct from Stage 2's LLM call
+│   └── llm_fallback.py       # Stage 3 Pass 3 — distinct from Stage 2's LLM call, stays per-item
 ├── expiry/
 │   └── predictor.py          # Shelf-life lookup + confidence
 ├── ner/
@@ -329,7 +342,7 @@ ml_service/
 
 ### Latency Budget (per receipt, CPU inference)
 
-**Note:** not yet re-measured end-to-end since the restructure. NER's ONNX latency line is removed (no model to run); item field extraction's latency (regex + lexicon + LLM call) is not yet benchmarked.
+**Note:** Stage 2's LLM-call latency dominates and is now understood in detail (see Item_Extraction.md's per-item measurement, ~658ms/item single-call, and the batching fix in §6 above that cuts total Groq call count ~5x per receipt). **Full end-to-end wall-clock latency for the built pipeline has still not been formally measured** — only informal evidence exists from `test_pipeline_local.py` log timestamps (~8-12s of visible Groq-call time across 2 test receipts), which excludes OCR/Row Reconstruction/Row Parser time and DB round-trips. A real timer around `process_receipt()` is the next concrete step (see HANDOFF.md).
 
 | Stage                  | Target Latency                                                                            |
 | ---------------------- | ----------------------------------------------------------------------------------------- |
@@ -337,10 +350,10 @@ ml_service/
 | OCR (PaddleOCR)        | ~5-6s (measured)                                                                          |
 | Row reconstruction     | Not yet measured — expected negligible (pure Python, no model)                           |
 | Prefilter + Row Parser | Not yet measured — expected negligible                                                   |
-| Item Field Extraction  | Not yet measured — LLM call (is_food) likely dominates                                   |
-| Normalization          | < 300ms (target, unvalidated against real data)                                           |
-| Expiry prediction      | < 100ms (target, unvalidated against real data)                                           |
-| **Total**        | **Needs full re-measurement — total pipeline not yet run end-to-end on real data** |
+| Item Field Extraction  | ~658ms per single-item LLM call (measured); batched in chunks of 5 in production, reducing total call count ~5x per receipt but per-call latency itself is unchanged |
+| Normalization          | < 300ms (target, unvalidated against real timing data — correctness validated, not speed) |
+| Expiry prediction      | < 100ms (target, unvalidated against real timing data — correctness validated, not speed) |
+| **Total**        | **Needs full wall-clock re-measurement — pipeline is built and correctness-validated on 2 real receipts, but no formal end-to-end timer has been run yet** |
 
 ---
 
@@ -353,15 +366,15 @@ Unchanged from v1.0 — see original doc content. CER/WER not measured (pretrain
 ### Row Parser (new)
 
 | Metric                    | Definition                                                              | Status                                                         |
-| ------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| ------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------|
 | Field extraction accuracy | % of quantity/price/discount/total correctly extracted vs. ground truth | Validated on 4 receipts, 100% match — not yet tested at scale |
 | Header detection rate     | % of receipts where a header row is correctly found                     | Not formally measured beyond the 4-receipt sample              |
 
 ### Item Field Extraction (new, replaces NER metrics)
 
 | Metric               | Definition                                    | Status                                      |
-| -------------------- | --------------------------------------------- | ------------------------------------------- |
-| is_food accuracy     | LLM gate correctness vs. labeled sample       | Not yet measured — no labeled sample built |
+| -------------------- | ---------------------------------------------- | ------------------------------------------- |
+| is_food accuracy     | LLM gate correctness vs. labeled sample       | Not yet measured — no labeled sample built (#34). Real pipeline runs (2 receipts, 36 items) show correct classification on all resolvable items, but this is not a substitute for a formal labeled-sample measurement. |
 | Unit extraction rate | % of items with a unit successfully extracted | Not yet measured                            |
 | Brand match rate     | % of items with a brand successfully matched  | Not yet measured                            |
 
@@ -369,23 +382,23 @@ Unchanged from v1.0 — see original doc content. CER/WER not measured (pretrain
 
 ### Normalization
 
-| Metric               | Definition                     | Target |
-| -------------------- | ------------------------------ | ------ |
-| Canonical Match Rate | % items resolved by Pass 1 + 2 | ≥ 80% |
-| LLM Fallback Rate    | % items needing Pass 3         | ≤ 20% |
+| Metric               | Definition                     | Target | Status |
+| -------------------- | ------------------------------- | ------ | ------ |
+| Canonical Match Rate | % items resolved by Pass 1 + 2 | ≥ 80% | 97.2% on synthetic eval (Normalization.md §9). Real pipeline runs: 34/36 end-to-end. |
+| LLM Fallback Rate    | % items needing Pass 3         | ≤ 20% | 11.1% on synthetic eval. |
 
 ### Expiry Prediction
 
-| Metric                   | Definition                            | Target      |
-| ------------------------ | ------------------------------------- | ----------- |
-| MAE (days)               | Mean absolute error vs. actual expiry | ≤ 1.5 days |
-| High-confidence accuracy | Accuracy when confidence ≥ 0.85      | ≥ 92%      |
+| Metric                   | Definition                            | Target      | Status |
+| ------------------------ | -------------------------------------- | ----------- | ------ |
+| MAE (days)               | Mean absolute error vs. actual expiry | ≤ 1.5 days | 100% within ±2 days on synthetic 16-case eval (Expiry.md) |
+| High-confidence accuracy | Accuracy when confidence ≥ 0.85      | ≥ 92%      | Not yet separately broken out by confidence tier |
 
 ### End-to-End
 
-| Metric              | Definition                                           | Target |
-| ------------------- | ---------------------------------------------------- | ------ |
-| Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85% |
-| Processing Time     | Wall clock, full pipeline, CPU                       | < 10s  |
+| Metric              | Definition                                           | Target | Status |
+| ------------------- | ------------------------------------------------------ | ------ | ------ |
+| Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85% | 34/36 = 94.4% across 2 real receipts this session (informal, not yet a formal measurement against ground truth) |
+| Processing Time     | Wall clock, full pipeline, CPU                       | < 10s  | **Not yet measured** — see Latency Budget section above and HANDOFF.md next steps |
 
-**Not yet measured** — blocked on full pipeline wiring (`pipeline.py` currently empty) and re-validation of Stage 3/4 against real Stage 1.5–2 output.
+**Pipeline is now built and running end-to-end on real data** (`pipeline.py`, #25, validated against 2 of 4 available real receipts) — a major change from the prior "pipeline.py currently empty" status. Formal wall-clock latency measurement and broader real-receipt coverage (2 more receipts available, not yet tried) remain the next concrete steps.

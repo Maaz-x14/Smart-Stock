@@ -1,7 +1,7 @@
 # Normalization.md — Stage 3: Item Normalization
 
-**Version:** 3.0 <br>
-**Status:** Complete. Interface rewritten, real bugs fixed, evaluated end-to-end against a live DB and real Groq API.
+**Version:** 3.1 <br>
+**Status:** Complete. Interface rewritten, real bugs fixed, evaluated end-to-end against a live DB and real Groq API. `reasoning_effort` fix (Issue #46) applied to Pass 3's Groq call this session.
 
 ---
 
@@ -203,6 +203,12 @@ pass2_fuzzy("SALT", db)       # -> (None, 0.0)  - too short, skipped (would have
 
 **Real bug found and fixed — this one would have been fatal:** `GROQ_MODEL` was hardcoded to `"llama-3.1-8b-instant"` — a real, deliberate choice at the time (fast, small, accurate on short constrained prompts), but confirmed **deprecated by Groq on 2026-06-17**, discovered during Stage 2's own model research (#28 - see Item_Extraction.md). This file predates that discovery and never got updated; it would have failed outright the first time it ran. Fixed to `openai/gpt-oss-20b` - the same model already validated for Stage 2's `food_classifier.py`, reusing a tested choice instead of picking something new here.
 
+**`reasoning_effort="low"` fix (Issue #46, added this session):** during real pipeline testing (`test_pipeline_local.py`), this call produced empty `content` (`raw_content=''`) on 2 items with severely corrupted OCR input, despite `max_tokens=300`. Root cause confirmed via added debug logging (`finish_reason`, `usage`, `reasoning` field): the model's reasoning trace consumed the full token budget (`reasoning_tokens=298` of 300, `finish_reason='length'`) before emitting any content — same root cause as the equivalent bug found and fixed in Stage 2's `food_classifier.py`. `reasoning_effort="low"` was added to this call as well.
+
+**Caveat, found in the same follow-up testing:** `reasoning_effort="low"` reduces but does **not** fully eliminate this failure mode. On genuinely ambiguous/corrupted input, the model can still enter a reasoning repetition loop and exhaust the token budget regardless of the parameter. Confirmed via the `reasoning` field content itself — the trace showed the model looping on near-identical phrasing ("Could be X but maybe Y??") multiple times without reaching a conclusion. This is being tracked as a separate, low-priority, accepted-behavior issue (see Section 10) rather than patched further right now — the existing fail-safe (`(None, 0.0)` return → item surfaced to user, never dropped) already handles it correctly, and it was only observed on severely corrupted OCR input (2/36 items across 2 real test receipts; the second receipt, with cleaner OCR, had zero such failures).
+
+Pass 3 remains **per-item, not batched** — a deliberate scope decision made alongside Stage 2's batching work (Issue #46). Pass 3 only fires on a cache + fuzzy-match miss, so call volume per receipt is naturally low (11.1% fallback rate per Section 9's eval), and batching here would trade accuracy risk for throughput this stage doesn't actually need.
+
 **Prompt design:** deliberately minimal. A longer prompt causes hedging, explanations, or multi-word non-canonical answers. The load-bearing instruction is "Reply with just the canonical food name, nothing else."
 
 Confidence if matched: fixed at **0.70**.
@@ -249,6 +255,8 @@ assign_category(canonical_name, db, raw_token)
 ```
 
 Validated by this session's real eval run: `FRZ BROC` correctly resolved `category = Frozen` (see Section 9).
+
+**Known follow-up (observed in real pipeline testing, not yet fixed):** `'Pakola Flvor Mlk Strwbry 125M1'` normalized to `category=Produce` while its choco sibling (`'Pakola Flvor Mlk Choco 125M1'`) correctly resolved `category=Dairy` — likely a keyword-priority interaction where "Strwbry"/Strawberry-related keywords rank ahead of the milk/dairy signal for that specific compound name. Not investigated further this session; minor and doesn't affect Stage 3/4 correctness structurally, flagged for future cleanup.
 
 ### 5.7 normalizer.py — the orchestrator
 
@@ -323,7 +331,7 @@ NormalizedItem(
 
 ---
 
-## 9. Real evaluation results (this session — first time run against a live DB and real Groq API)
+## 9. Real evaluation results (synthetic eval — first time run against a live DB and real Groq API)
 
 | Metric | Result | vs. target |
 |---|---|---|
@@ -336,25 +344,21 @@ NormalizedItem(
 | Canonical match rate | 97.2% | Met - target 80%+ |
 | LLM fallback rate | 11.1% | Met - target 20% or lower |
 
+### 9.1 Real pipeline validation (this session, via `test_pipeline_local.py`)
+
+Distinct from the synthetic eval above — this ran Stage 3 as part of the full pipeline against real OCR'd receipt data, not hand-picked test strings.
+
+Two real receipts, 36 items total (20 + 16):
+- Receipt 1: several items resolved correctly via Pass 2/Pass 3 (e.g. `'Tapal Tea Bags...' → 'Dried Lychee'`, `'Ponam Sugar 1kg' → 'Sugar'`). 2 items failed to resolve (`'Kimtiaz'`, `'Peek Frns Cocnt Crnch Farm Hose F/P'`) — both tied to severely corrupted OCR (a hand blocking part of the receipt during photo capture); root cause was the reasoning-loop issue described in Section 5.4, not a Stage 3 logic bug.
+- Receipt 2 (cleaner OCR): 16/16 food items resolved correctly via Pass 2/Pass 3, zero failures.
+
+This is the first time Stage 3 has been exercised against real, messy OCR output end-to-end rather than synthetic strings — the 2 failures observed were input-quality-driven, not structural.
+
 ---
 
 ## 10. Known gaps
 
 - Pass 3's free-text output is structurally hard to test with exact-match assertions - future evaluation should consider fuzzy/semantic matching specifically for Pass 3 cases, not string equality.
 - `ANDA DOZEN -> Andouille` is unexplained. Not root-caused. Watch for a pattern if similar failures recur on more data.
-- Not yet tested against real receipt OCR output (1-4.jpg) - only hand-picked test strings so far.
-- Category keyword lists beyond the frozen-signal fix remain hand-curated and unvalidated against real data, same caveat as Stage 2's brand lexicon.
-
----
-
-## 11. Troubleshooting
-
-| Issue | Fix |
-|---|---|
-| `GROQ_API_KEY` not found | Add to `.env`, call `load_dotenv()` before app startup |
-| Groq rate limit error | Check `normalization_cache` is actually being hit - repeat items shouldn't re-call the API |
-| Fuzzy match false positive (e.g. "SALT" to "Malt") | Add the token explicitly to `abbreviation_map.json` to force a Pass 1 exact hit |
-| Pakistani/regional item not resolving past Pass 1 | Transliteration varies by retailer - add the exact receipt token variant seen to `abbreviation_map.json` |
-| LLM returns a multi-word explanation instead of a name | `_clean_llm_response()` takes only the first line and strips punctuation. If still verbose, tighten the prompt further |
-| `normalize_entity()` returns `None` for a known item | Print `cleaned` from `preprocess_token()` - modifier stripping may have removed too much |
-| Short token (4 chars or fewer) skips straight to Pass 3 | By design - fuzzy is unreliable at that length. Add the token to `abbreviation_map.json` instead |
+- Category keyword lists beyond the frozen-signal fix remain hand-curated and unvalidated against real data, same caveat as Stage 2's brand lexicon. One real inconsistency observed this session (Section 5.6, Pakola Strwbry → Produce instead of Dairy) — not yet fixed.
+- **Stage 3 Pass 3 reasoning-loop failure on severely corrupted OCR input** (Section 5.4) — `reasoning_effort="low"` does not fully eliminate this. Fails safe correctly (item surfaced, `canonical=None`, never dropped or wrong). Low observed frequency (2/36 items, tied specifically to physically-obstructed OCR). Tracked as GitHub Issue #48, low priority — revisit if frequency increases in real usage.

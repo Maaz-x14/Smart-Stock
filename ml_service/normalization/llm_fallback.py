@@ -21,6 +21,17 @@ Stays per-item (not batched) per Issue #46 scope decision - Pass 3
 only fires on a cache + fuzzy-match miss, so call volume per receipt
 is naturally low, and batching would trade accuracy risk for
 throughput this stage doesn't need.
+
+DEBUGGING (Issue #46 follow-up): after reasoning_effort="low" was
+applied, empty-content failures still occurred on 2 real items in a
+20-item test run ('Kimtiaz', 'Peek Frns Cocnt Crnch Farm Hose F/P').
+The debug print on failure now also captures the `reasoning` field
+length/content, `finish_reason`, and `usage` from the Groq response -
+previously only raw_content was logged, which couldn't distinguish
+"reasoning ate the budget" (finish_reason="length", high
+completion_tokens with a long reasoning field) from some other cause.
+Not yet root-caused - this change is purely to gather that evidence on
+the next run, no behavior change to the success path.
 """
 
 import os
@@ -101,7 +112,9 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
                 "temperature": 0.0,
                 # Caps reasoning-trace token spend so it doesn't crowd out
                 # actual content (Issue #46, fix #2) - confirmed root cause
-                # of at least one raw_content='' failure in testing.
+                # of at least one raw_content='' failure in testing. Did
+                # NOT fully eliminate the failure on rerun - see debug
+                # logging below, still being root-caused.
                 "reasoning_effort": "low",
             },
             timeout=10.0,
@@ -111,11 +124,32 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
         print(f"[llm_fallback] Groq API error for token '{raw_token}': {e}")
         return None, 0.0
 
-    content = response.json()["choices"][0]["message"]["content"]
+    response_json = response.json()
+    message = response_json["choices"][0]["message"]
+    content = message["content"]
+    # Groq's gpt-oss models may expose a separate reasoning trace field,
+    # not inline in content (same shape as food_classifier.py's provider
+    # call). None if this response doesn't expose it.
+    reasoning = message.get("reasoning")
     canonical_name = _clean_llm_response(content)
 
     if not canonical_name or len(canonical_name) < 2:
-        print(f"[llm_fallback debug] raw_token={raw_token!r} raw_content={content!r} cleaned={canonical_name!r}")
+        # Debug logging (Issue #46 follow-up): capture reasoning length/
+        # content, finish_reason, and usage to determine whether the
+        # reasoning trace is still consuming the token budget despite
+        # reasoning_effort="low". finish_reason="length" + high
+        # completion_tokens with a long reasoning field would confirm
+        # that; anything else points to a different root cause.
+        reasoning_len = len(reasoning) if reasoning else 0
+        finish_reason = response_json["choices"][0].get("finish_reason")
+        usage = response_json.get("usage", {})
+        print(
+            f"[llm_fallback debug] raw_token={raw_token!r} raw_content={content!r} "
+            f"cleaned={canonical_name!r} reasoning_len={reasoning_len} "
+            f"finish_reason={finish_reason!r} usage={usage!r}"
+        )
+        if reasoning:
+            print(f"[llm_fallback debug] reasoning_text={reasoning!r}")
         return None, 0.0
 
     _cache_store(raw_token, canonical_name, db)
