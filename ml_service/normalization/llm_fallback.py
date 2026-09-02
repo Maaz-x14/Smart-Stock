@@ -7,6 +7,20 @@ research - see Item_Extraction.md). This was dead on arrival. Updated
 to openai/gpt-oss-20b, the same model validated for Stage 2's
 food_classifier.py (#28) - reuses an already-tested, working choice
 rather than picking a new untested one for Stage 3.
+
+FIXED (Issue #46): added reasoning_effort="low". gpt-oss-20b spends
+part of max_tokens on an internal reasoning trace before emitting
+content; on at least one real query during testing this consumed the
+ENTIRE 300-token budget, producing empty content (raw_content='')
+that failed the len(canonical_name) < 2 check downstream - not a rate
+limit, a genuine token-budget bug, same root cause as food_classifier.py's
+version of this bug. reasoning_effort is a real, documented Groq API
+param, not a guess.
+
+Stays per-item (not batched) per Issue #46 scope decision - Pass 3
+only fires on a cache + fuzzy-match miss, so call volume per receipt
+is naturally low, and batching would trade accuracy risk for
+throughput this stage doesn't need.
 """
 
 import os
@@ -85,6 +99,10 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 300,
                 "temperature": 0.0,
+                # Caps reasoning-trace token spend so it doesn't crowd out
+                # actual content (Issue #46, fix #2) - confirmed root cause
+                # of at least one raw_content='' failure in testing.
+                "reasoning_effort": "low",
             },
             timeout=10.0,
         )

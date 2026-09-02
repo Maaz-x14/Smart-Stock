@@ -10,13 +10,24 @@ Design decisions (locked, see chat record / HANDOFF.md):
     by extractor.py, not this module - pipeline.py doesn't know or
     care whether it's Groq, OpenRouter, or Gemini.
   - Stage 2 (is_food classification) is the ~658ms/item bottleneck
-    (measured in #28/#29). Runs concurrently via asyncio.to_thread +
-    Semaphore, since extract_item_fields() is a synchronous, blocking
-    call (sync OpenAI client) - not a coroutine. Semaphore bounds
-    concurrent threads, not requests-per-minute; sufficient for a
-    single receipt (<=20 items per PRD.md) against Groq's RPM 30.
-    Multi-receipt RPM enforcement is a future rate-limiter concern,
-    not this issue's.
+    (measured in #28/#29). Originally ran concurrently via
+    asyncio.to_thread + Semaphore (STAGE2_CONCURRENCY). That bounded
+    parallel requests, not tokens/min - even at concurrency=5, back-
+    to-back Stage 2 + Stage 3 calls with no token-budget awareness
+    still exhausted Groq's free-tier TPM (8000/min), causing 429s
+    regardless of the concurrency setting (Issue #46).
+  - FIX (Issue #46): Stage 2 now calls extract_item_fields_batch(),
+    which batches is_food classification across all items in chunks
+    of 5 (one Groq call per chunk instead of one per item). This cuts
+    call count ~5x, which fixes both the TPM exhaustion and the 10s
+    upload budget concern the old concurrency approach was trying to
+    solve. asyncio.Semaphore/asyncio.gather-per-item is removed - no
+    longer needed, since there's no longer a fan-out of N per-item
+    calls to bound.
+  - Stage 3 (Normalization) Pass 3 LLM fallback stays per-item, NOT
+    batched (Issue #46 scope decision) - it's sparse (cache/fuzzy-match
+    miss only) and accuracy-critical, unlike Stage 2 which hits every
+    item unconditionally.
   - Stage 3/4 stay sequential per item - not the bottleneck, no
     evidence justifying the complexity of concurrent DB-session use.
   - is_food gating: None (API failure/malformed response) is treated
@@ -35,7 +46,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import tempfile
 from dataclasses import dataclass
 from datetime import date
@@ -45,16 +55,11 @@ from sqlalchemy.orm import Session
 from ml_service.ocr.model import run_ocr
 from ml_service.ocr.row_reconstruction import reconstruct_rows
 from ml_service.parsing.row_parser import parse_receipt_rows
-from ml_service.item_extraction.extractor import extract_item_fields, ItemFields
+from ml_service.item_extraction.extractor import extract_item_fields_batch, ItemFields
 from ml_service.normalization.normalizer import normalize_entity
 from ml_service.expiry.predictor import predict_expiry
 
 logger = logging.getLogger(__name__)
-
-# Max concurrent Stage 2 (is_food) calls in flight at once. Bounded by
-# Groq's RPM 30 with headroom for a single receipt (<=20 items per
-# PRD.md) - not a general-purpose multi-receipt rate limiter.
-STAGE2_CONCURRENCY = int(os.getenv("STAGE2_CONCURRENCY", "5"))
 
 
 # -- Typed exceptions: stages where failure means the pipeline cannot continue --
@@ -173,20 +178,15 @@ async def process_receipt(
 
     logger.debug(f"Stage 1.7 Row Parser: {len(parsed_items)} items parsed")
 
-    # -- Stage 2: Item Field Extraction (concurrent, bounded) --
-    # extract_item_fields() is sync/blocking (sync OpenAI client) - not
-    # a coroutine, so a plain asyncio.Semaphore does nothing on its
-    # own. asyncio.to_thread() moves each call to a thread pool; the
-    # semaphore caps how many threads run at once.
-    sem = asyncio.Semaphore(STAGE2_CONCURRENCY)
-
-    async def extract_with_limit(item_name: str) -> ItemFields:
-        async with sem:
-            return await asyncio.to_thread(extract_item_fields, item_name)
-
-    fields_list = await asyncio.gather(
-        *(extract_with_limit(item["item_name"] or "") for item in parsed_items)
-    )
+    # -- Stage 2: Item Field Extraction (batched, Issue #46) --
+    # extract_item_fields_batch() is sync/blocking (sync OpenAI client
+    # under the hood) - run in a thread so we don't block the event
+    # loop. Unlike the old per-item semaphore/gather approach, this is
+    # ONE call covering the whole receipt's unit/brand extraction plus
+    # chunked (size 5) is_food classification - no per-item fan-out to
+    # bound here anymore.
+    item_names = [item["item_name"] or "" for item in parsed_items]
+    fields_list = await asyncio.to_thread(extract_item_fields_batch, item_names)
 
     logger.debug(f"Stage 2 Item Field Extraction: {len(fields_list)} items classified")
 
