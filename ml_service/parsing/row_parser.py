@@ -207,4 +207,13 @@ def parse_receipt_rows(rows):
         else:
             parsed.append(parse_row_without_header(row))
 
-    return merge_split_rows(parsed)
+    merged = merge_split_rows(parsed)
+
+    # New issue (filed this session): drop items where item_name is
+    # None/empty after parsing. should_drop_row() (Stage 1.6 prefilter)
+    # only screens raw OCR rows BEFORE parsing - it can't catch cases
+    # where parsing itself produces an empty item_name (e.g. a row
+    # that was all-numeric, or noise that consumed the only
+    # non-numeric token). Those were reaching Stage 2 as "" and
+    # burning an is_food classification call on nothing.
+    return [item for item in merged if item["item_name"] and item["item_name"].strip()]

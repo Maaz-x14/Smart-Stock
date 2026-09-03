@@ -1,0 +1,51 @@
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+ReduceMeanCheckIfOneDNNSupport
+Warming up OCR model...
+
+=== /home/maazahmad/Desktop/Smart-Stock/inference/2.jpg ===
+[llm_fallback debug] raw_token='Peek Frns Cocnt Crnch Farm Hose F/P' raw_content='' cleaned='' reasoning_len=962 finish_reason='length' usage={'queue_time': 0.282086848, 'prompt_tokens': 116, 'prompt_time': 0.008849654, 'completion_tokens': 300, 'completion_time': 0.32448489, 'total_tokens': 416, 'total_time': 0.333334544, 'completion_tokens_details': {'reasoning_tokens': 298}}
+[llm_fallback debug] reasoning_text='We need to decode: "Peek Frns Cocnt Crnch Farm Hose F/P". Likely "Peach Frozen Corn Crunch Farmhouse F/P"? Maybe "Peach Frozen Corn Crunch Farmhouse F/P"? Could be "Peach Frozen Corn Crunch Farmhouse F/P". But common food item? Maybe "Peanut Butter"? No. "Peek Frns" could be "Peach F"?? "Cocnt" maybe "Coconut"? "Crnch" crunch. "Farm Hose" maybe "Farmhouse"? "F/P" maybe "F/P" stands for "F/P"? Could be "Peanut Butter"? Hmm.\n\nMaybe it\'s "Peanut Butter Crunch Farmhouse F/P" no.\n\nCould be "Peach Frozen Corn Crunch Farmhouse F/P" maybe "Peach Frozen Corn Crunch Farmhouse F/P" is a snack? "Peanut Butter Crunch"? Wait "Peek Frns" could be "Pea F"?? "Cocnt" maybe "Coconut"? "Crnch" crunch. "Farm Hose" maybe "Farmhouse". So "Peanut Coconut Crunch Farmhouse F/P" no.\n\nMaybe it\'s "Peanut Butter Crunch Farmhouse F/P" but "Peek Frns" could be "Pea F"?? "Cocnt" maybe "Coconut"? "Crnch" crunch. "Farm Hose" maybe "Farmhouse". So "Peanut Coconut Crunch Farmhouse F/P'
+  process_receipt() wall-clock: 16.08s
+  'Kimtiaz'                      -> is_food=False  canonical=None                 pass=None expiry=None
+  'FBR Inv01ce #:_139a71220016Z1104333' -> is_food=False  canonical=None                 pass=None expiry=None
+  '-KHI-MEGA-DHA-'               -> is_food=False  canonical=None                 pass=None expiry=None
+  'User:43824-Hassan RazKhan'    -> is_food=False  canonical=None                 pass=None expiry=None
+  'OrigtnalReceipt'              -> is_food=False  canonical=None                 pass=None expiry=None
+  'Product Descrip'              -> is_food=False  canonical=None                 pass=None expiry=None
+  'Sales Items'                  -> is_food=False  canonical=None                 pass=None expiry=None
+  'Peek Frns Cocnt Crnch Farm Hose F/P' -> is_food=True   canonical=None                 pass=None expiry=None
+  "Tapal Tea Bags Dnedr Elchi 50'S" -> is_food=True   canonical='Dried Lychee'       pass=3 expiry=2026-09-10
+  'Bush Essence Mango 28M1'      -> is_food=True   canonical='Canned Mango'       pass=3 expiry=2026-09-10
+  'Everyday Tea Whtnr '          -> is_food=True   canonical='White Tea'          pass=3 expiry=2027-09-03
+  'Everyday Instnt'              -> is_food=True   canonical='Instant Noodles'    pass=3 expiry=2026-09-10
+  'Everyday Instnt'              -> is_food=True   canonical='Instant Noodles'    pass=3 expiry=2026-09-10
+  'Pakola MIk Uht 250M1'         -> is_food=True   canonical='Milk'               pass=3 expiry=2026-09-10
+  "Olper'S M1k Full Crm Pch 250M1" -> is_food=True   canonical='Full Cream Milk'    pass=3 expiry=2026-09-10
+  'Nurpur Mlk Ful1 Crm Pch 250M1' -> is_food=True   canonical='Milk'               pass=3 expiry=2026-09-10
+  'Ponam Sugar 1kg'              -> is_food=True   canonical='Sugar'              pass=3 expiry=2031-09-02
+  'Ponam Gurr Shakar 500g'       -> is_food=True   canonical='Jaggery'            pass=3 expiry=2026-09-10
+
+=== /home/maazahmad/Desktop/Smart-Stock/inference/3.jpg ===
+  process_receipt() wall-clock: 7.45s
+  'On NoY:2412050011557'         -> is_food=False  canonical=None                 pass=None expiry=None
+  'cion Date:'                   -> is_food=False  canonical=None                 pass=None expiry=None
+  '67426-Awais'                  -> is_food=False  canonical=None                 pass=None expiry=None
+  'Original Receipt'             -> is_food=False  canonical=None                 pass=None expiry=None
+  "'roduct Description"          -> is_food=False  canonical=None                 pass=None expiry=None
+  'Sales Items'                  -> is_food=False  canonical=None                 pass=None expiry=None
+  'Beef Mince'                   -> is_food=True   canonical='Minced Beef'        pass=2 expiry=2026-09-05
+  'Chicken Whole'                -> is_food=True   canonical='Whole Chicken'      pass=3 expiry=2026-09-05
+  'Dawn Chkn Ngets'              -> is_food=True   canonical='Chicken Nuggets'    pass=3 expiry=2026-09-05
+  'Pakola Flvor Mlk Strwbry 125M1' -> is_food=True   canonical='Strawberry Flavored Milk' pass=3 expiry=2026-09-10
+  'Pakola Flvor Mlk Choco 125M1' -> is_food=True   canonical='Chocolate Flavored Milk' pass=3 expiry=2026-09-10
+  'Milo Drnk 180M1'              -> is_food=True   canonical='Milo'               pass=3 expiry=2026-09-10
+  'Nestle Ygrt Pln 220g'         -> is_food=True   canonical='Plain Yogurt'       pass=3 expiry=2026-09-17
+  'scount'                       -> is_food=False  canonical=None                 pass=None expiry=None

@@ -40,6 +40,12 @@ Design decisions (locked, see chat record / HANDOFF.md):
     normalization, expiry) never raise for expected failure modes -
     they return None/missing fields, preserving the item so it's
     still surfaced to the user, never silently dropped.
+  - ExtractedItem carries normalization_pass (which of Stage 3's
+    passes resolved canonical_name - 1=exact/DB, 2=fuzzy, 3=LLM
+    fallback, None if unresolved or excluded). Added this session so
+    normalization-quality bugs (wrong canonical name) can be traced to
+    a specific pass from process_receipt()'s return value, not just
+    from scattered debug logs.
 """
 
 from __future__ import annotations
@@ -97,6 +103,7 @@ class ExtractedItem:
     shelf_life_days: int | None
     confidence: float | None
     storage_context: str | None
+    normalization_pass: int | None
 
 
 def _excluded_item(raw_token: str, parsed: dict, fields: ItemFields) -> ExtractedItem:
@@ -115,6 +122,7 @@ def _excluded_item(raw_token: str, parsed: dict, fields: ItemFields) -> Extracte
         shelf_life_days=None,
         confidence=None,
         storage_context=None,
+        normalization_pass=None,
     )
 
 
@@ -168,6 +176,14 @@ async def process_receipt(
         raise RowReconstructionError(str(e)) from e
 
     logger.debug(f"Stage 1.5 Row Reconstruction: {len(rows)} rows")
+
+    # TEMP DEBUG (Issue #49) - dump each row's text + y-coordinate to
+    # tell apart a genuine duplicate receipt line from a Row
+    # Reconstruction clustering bug splitting one line into two rows.
+    # Remove once #49's duplicate-row root cause is confirmed/fixed.
+    for i, row in enumerate(rows):
+        row_dump = " | ".join(f"{it['text']!r}@y={it['y']:.1f}" for it in row)
+        logger.debug(f"  row[{i}]: {row_dump}")
 
     # -- Stage 1.6 (Prefilter, runs internally) + Stage 1.7 (Row Parser) --
     try:
@@ -244,6 +260,7 @@ async def process_receipt(
                 shelf_life_days=None,
                 confidence=None,
                 storage_context=None,
+                normalization_pass=normalized.normalization_pass,
             ))
             continue
 
@@ -264,6 +281,7 @@ async def process_receipt(
             shelf_life_days=expiry.shelf_life_days,
             confidence=expiry.confidence,
             storage_context=expiry.storage_context,
+            normalization_pass=normalized.normalization_pass,
         ))
 
     return results
