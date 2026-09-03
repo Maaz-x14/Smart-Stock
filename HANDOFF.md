@@ -25,10 +25,10 @@ Smart-Stock: portfolio/CV project. Reads grocery receipts, predicts expiry dates
 | Doc | Status |
 |---|---|
 | PRD.md, Architecture.md, API_Spec.md, DB_Schema.md, OCR_Training.md, NER_Training.md, README.md | Current as of previous handoff, unchanged this session |
-| Item_Extraction.md | Updated this session - batch classification (Issue #46) documented (§4.1, §4.2), extractor.py batch entry point documented |
-| Normalization.md | Updated this session - `reasoning_effort` fix documented in Pass 3 (§5.4), real pipeline validation results added (§9.1), reasoning-loop known gap added (§10) |
+| Item_Extraction.md | Unchanged this session - still reflects Issue #46 batch classification work. **Needs update**: Stage 2 prompt rewrite (this session, #50) not yet documented. |
+| Normalization.md | Unchanged this session. **Needs update**: §9.1's real-pipeline validation example still cites `Tapal Tea Bags -> 'Dried Lychee'` as a correct resolved example — this is now WRONG, it was one of the bugs fixed this session (#51). §5.4/§10 reasoning-loop content needs a note that Pass 3's prompt was rewritten this session (UNKNOWN escape hatch + brand-is-product distinction). |
 | Expiry.md | Current as of previous handoff, unchanged this session |
-| ML_Pipeline.md | **Needs update, not yet done** - Stage 2 section (§6) still describes the old concurrency-based design; pipeline.py's structure diagram (§9) is stale (pipeline.py is no longer empty). See "Docs still needing updates" below. |
+| ML_Pipeline.md | Still needs update from before (Stage 2 concurrency->batching, §9 structure diagram) - not done this session either, still stale. |
 
 **Naming note:** `Normalization_Training.md`/`Expiry_Training.md` renamed to `Normalization.md`/`Expiry.md` (prior session) - neither stage trains a model (3-pass lookup + rule-based tiers), the `_Training` suffix was a leftover from NER-era naming. `OCR_Training.md` keeps its name - TrOCR fine-tuning genuinely happened there.
 
@@ -52,112 +52,112 @@ Receipt Image
 
 ---
 
-## Stage-by-stage status (updated)
+## THIS SESSION'S WORK (real-receipt testing surfaced 4 distinct bugs, all fixed/closed)
 
-### Stages 1, 1.5, 1.6, 1.7 - unchanged this session, see previous handoff / respective docs. All DONE.
+Continuing from prior session's real-receipt pipeline testing (2.jpg, 3.jpg via `test_pipeline_local.py`). Found and worked through:
 
-### Stage 2 - Item Field Extraction: COMPLETE, batching added this session (Issue #46)
+### #49 — CLOSED (not a bug)
+Two sub-issues, both investigated and resolved:
+- **Duplicate row** ('Everyday Instnt' x2 on 3.jpg): row-dump debug (raw_token + y-coord) confirmed 76px y-separation, each with its own independent price row (qty 24, Rs936 each). Genuine duplicate line printed on the physical receipt, not an OCR/row-reconstruction bug. No dedup logic added.
+- **Category classifier inconsistency** ('Pakola Strwbry Milk' -> category=Produce instead of Dairy): root-caused to substring matching in `category_classifier.py`'s `assign_category()` — Produce's keyword "berry" is a substring of "strawberry", matched before Dairy's "milk" was checked (dict insertion order + `kw in name_lower` logic). Fixed with word-boundary matching (`\bkw\b`). Verified fixed in pipeline output.
 
-All 4 modules built and smoke-tested against real APIs (Groq), from prior sessions:
-- `unit_extractor.py` (#26), `brand_matcher.py` (#27), `food_classifier.py` (#28), `extractor.py` (#29) - see Item_Extraction.md for full detail, unchanged in substance this session.
+### #51 — Pass 3 hallucination on real receipt tokens, FIXED, ready to close on PR merge
+Root cause: `llm_fallback.py`'s original one-line Pass 3 prompt ("Reply with just the canonical food name, nothing else") had no abstention path, forcing a confident-sounding wrong guess on abbreviated/ambiguous tokens. Real examples: `Tapal Tea Bags Dnedr Elchi` -> `'Dried Lychee'`, `Everyday Instnt` -> `'Instant Noodles'`, `Everyday Tea Whtnr` -> `'White Tea'`.
 
-**This session's work (Issue #46):** `pipeline.py` (#25) was built and wired end-to-end, then real testing (`test_pipeline_local.py`) surfaced Groq TPM 429s that the originally-planned concurrency approach (`STAGE2_CONCURRENCY` semaphore) did not fix - concurrency bounds parallel requests, not tokens/minute. Root-caused and fixed:
+Two fixes, both required (neither alone was sufficient):
+1. **`abbreviation_map.py`**: Pass 1 only tried the whole cleaned string as one key (exact/collapsed). Added token-scan (bigram-then-unigram, left to right) so a known key embedded in a longer noisy string (e.g. "TAPAL TEA BAGS DNEDR ELCHI 50'S" containing "TAPAL" and "TEA BAGS") resolves at Pass 1, never reaching Pass 3 at all. This is the primary fix — most of #51's examples now resolve here.
+2. **`llm_fallback.py`**: rewrote the Pass 3 prompt through several iterations (see "prompt iteration notes" below) to add an explicit `UNKNOWN` escape hatch, and a brand-resolution rule distinguishing single-product brands (e.g. "Milo" — resolve directly) from ambiguous/multi-product or non-food brand names (e.g. "Kimtiaz", a mall name — UNKNOWN).
 
-1. `food_classifier.py`: added `classify_is_food_batch()` / `classify_is_food_chunked()` (chunk size 5) - batches is_food classification instead of one Groq call per item. XML-structured batch prompt with 2 multishot examples, fail-safe-to-UNKNOWN-per-chunk on any malformed/wrong-length response.
-2. `extractor.py`: added `extract_item_fields_batch()` - the new production entry point. Unit/brand stay per-item (local, not the bottleneck); only is_food is batched.
-3. `pipeline.py`: removed `STAGE2_CONCURRENCY`/`Semaphore`/`gather` fan-out entirely, replaced with a single `extract_item_fields_batch()` call.
-4. `reasoning_effort="low"` added to both `food_classifier.py` calls (single-item and batch) and `llm_fallback.py` (Stage 3 Pass 3) - fixes a separate real bug where Groq's `gpt-oss-20b` reasoning trace was observed consuming the entire token budget on some prompts, producing empty content.
+**Cache gotcha hit and fixed during this work:** `NormalizationCache` (keyed on `raw_token.upper()`) caches Pass 3 results and is checked *before* Groq is called. Three different prompt rewrites in a row produced byte-identical wrong output for "Everyday Instnt" because the cache was serving a stale pre-fix result the whole time — not a prompt problem. Added `check_cache.py` (pushed to main directly, not part of the #51/#50 PR) to inspect/clear cache entries. **Lesson for next session: clear relevant cache entries before concluding a Pass 3 prompt change "didn't work."**
 
-**Validated:** 2 real receipts via `test_pipeline_local.py`, 36 items total. Zero Groq 429s in either run. See Item_Extraction.md §4.1 for full validation detail.
+### #50 — Stage 2 reasoning-loop / fail-safe, FIXED, ready to close on PR merge
+Root cause: `food_classifier.py`'s batch/single prompts had a "do not refuse, still output your best guess" instruction that pushed the model to keep reasoning toward a forced answer instead of bailing early on unrecognizable garbage — directly causing `finish_reason='length'` reasoning-loops on items like `'Kimtiaz'` (a mall name) and `'Peek Frns Cocnt Crnch Farm Hose F/P'` (severely garbled OCR), both burning the full token budget and returning empty content.
 
-**Known remaining gap (not this session's target, tracked separately):** `reasoning_effort="low"` reduces but does not fully eliminate the reasoning-loop failure mode - 2/36 items (both with severely corrupted OCR input, hand blocking part of the receipt) still hit `finish_reason='length'` with the reasoning trace looping and never emitting content. Pipeline fails safe correctly (item surfaced, not dropped). Tracked as GitHub Issue #48, low priority, not fixed this session. Full root-cause detail: Item_Extraction.md §4.2, Normalization.md §5.4.
+Rewrote both prompts (batch `BATCH_SYSTEM_PROMPT` and single-item `SYSTEM_PROMPT`) through 2 iterations:
+- v1: added an instruction to output `is_food=false` immediately on garbled/unrecognizable text. **Caused a real regression** — over-applied to noisy-but-legible items (`Bush Essence Mango 28M1`, `Milo Drnk 180M1` both got dropped as non-food, previously correct).
+- v2 (current): sharpened the rule to explicitly distinguish "OCR noise/abbreviation attached to a real food/brand word" (still food — the noise elsewhere isn't disqualifying) from "no food/brand word present anywhere" (not food). Added a 3rd few-shot example set built from this session's real failure cases.
 
-Full detail, bug records, worked examples: Item_Extraction.md.
+**Confirmed via 2 full pipeline reruns:** Kimtiaz and Peek Frns both correctly `is_food=False` now, no more reasoning-loop, no regression on Bush Essence Mango / Milo / any other previously-correct item.
 
-### Stage 3 - Normalization: COMPLETE, `reasoning_effort` fix applied this session (Issue #46)
-
-Interface rewrite and core bug fixes are from the prior session (see below, unchanged in substance). **This session added:** `reasoning_effort="low"` to `llm_fallback.py`'s Groq call (same fix/same root cause as Stage 2, see above) plus debug logging (`reasoning` field length, `finish_reason`, `usage`) used to root-cause the empty-content failures found in real pipeline testing.
-
-Real pipeline validation this session (distinct from the synthetic 36-case eval below): 2 real receipts, 36 items total. 34/36 resolved correctly via Pass 1/2/3; the 2 failures were the reasoning-loop cases above (Issue #48), not a Stage 3 logic bug - confirmed by a second, cleaner-OCR receipt resolving 16/16 with zero failures.
-
-**Prior session's work (unchanged, still valid):** `normalize_entity()` interface rewrite from the old broken NER-era signature to `normalize_entity(item_name: str, quantity: float, unit: str | None, db) -> NormalizedItem | None`; 6 real bugs found and fixed (deprecated Groq model, category-keyword collisions via frozen-signal priority check, duplicate dict keys, dead code, duplicated unit-stripping logic, unit_normalizer interface simplification). Synthetic eval: 36 test cases, 35/36 exact-match correct (97.2% corrected accuracy). One unresolved finding from that session: `ANDA DOZEN -> Andouille`, not root-caused.
-
-Full detail: Normalization.md.
-
-### Stage 4 - Expiry Prediction: COMPLETE, unchanged this session
-
-No changes this session. Prior session: dependency chain fixed (unblocked by Stage 3's interface fix), `evaluate.py` fixed to call the real `normalize_entity()` instead of hand-building `NormalizedItem` objects (was passing 100% even with Stage 3 broken). Real eval: 16/16 correct within +/-2 days (100%).
-
-Full detail: Expiry.md.
+### New issue this session (see #52 below): Pass 3 brand-resolution over-eager on multi-product brands
+Not fixed this session, deliberately deferred (see "known follow-up" below).
 
 ---
 
-## Real findings this session, carried forward as open items
+## Prompt iteration notes (why this took several passes — context if the pattern needs to be understood again)
 
-1. **Latency not yet formally re-measured end-to-end.** Only informal evidence from `test_pipeline_local.py` log timestamps: receipt 1 (20 items) showed ~12s of visible Groq-call time, receipt 2 (16 items) ~8s - but this excludes OCR/Row Reconstruction/Row Parser time (Stage 1/1.5/1.7 ran before the first logged Groq timestamp) and DB round-trip time in Stage 3/4. **Needs a real wall-clock timer around `process_receipt()`** to get an actual number against PRD.md §6's 10-second budget - not done yet, was flagged as the next step, not picked up this session.
-2. **Stage 3 Pass 3 reasoning-loop gap (Issue #48, low priority):** see above. Not being actively worked, revisit only if frequency increases in real usage.
-3. **Category classifier inconsistency observed in real pipeline testing (not yet fixed):** `'Pakola Flvor Mlk Strwbry 125M1'` resolved `category=Produce` while its choco sibling correctly resolved `category=Dairy` - likely a keyword-priority interaction, not investigated further. Flagged in Normalization.md §5.6, no issue filed yet.
-4. **Duplicate row observed in real pipeline testing (not investigated):** `'Everyday Instnt'` appeared twice in one receipt's parsed items, causing 2 redundant Stage 2/3/4 calls for the same string. Unclear whether this is a genuine duplicate line on the physical receipt or a Stage 1.7 Row Parser bug - not root-caused, not filed as an issue yet. Worth checking before the next latency measurement, since it inflates call count for reasons unrelated to Issue #46.
-5. Carried from prior session, still open: Pass 3 (`llm_fallback.py`) `ANDA DOZEN -> Andouille` gap (unrelated to this session's reasoning-loop finding - a different, semantic-resolution failure), Pass 3 free-text output testability (exact-match assertions don't fit LLM output well).
+Both `food_classifier.py` and `llm_fallback.py` prompts went through multiple rewrites this session. Pattern observed each time: fixing one failure mode (forced-guess-on-garbage) risked introducing the opposite failure mode (over-cautious UNKNOWN/false on genuinely resolvable items). The fix that stuck, both times, was **not** more/stricter prose instructions — it was **adding a clearer boundary rule** ("does a real food/brand word exist in the text, yes or no") **plus concrete few-shot examples drawn from actual observed failures**, rather than abstract instruction-stacking. Any future prompt tuning on these two files should test against the full set of real examples now baked into both prompts' few-shot sections (Kimtiaz, Peek Frns, Tapal, Bush Essence Mango, Milo, Everyday Instnt) before considering a change safe.
 
 ---
 
-## Docs still needing updates (not done yet, flagged for next session)
+## Known follow-up, NOT fixed this session (low priority)
 
-- **ML_Pipeline.md**: §6 (Stage 2 section) still describes the old concurrency-only design consideration (`asyncio.Semaphore`/`STAGE2_CONCURRENCY`) as the plan - needs updating to reflect that batching (chunk size 5) was the approach actually shipped, and why (concurrency alone didn't solve the real TPM problem). §9's inference code structure diagram still shows `pipeline.py` as "currently empty — rewiring in progress" - it's built now (#25 closed). §9's latency budget table is stale (still says "not yet re-measured," which remains true, but the surrounding context describing an unbuilt pipeline is outdated).
-- **README.md**: not reviewed this session - unknown whether it references Stage 2's architecture/concurrency approach. Check before next session if it's user-facing enough to matter.
+**Pass 3 resolves multi-product brand names too eagerly.** Example: `Pakola MIk Uht 250M1` -> `'Pakola'` (pass 3, confidence 0.28, hard_default fallback). The brand-is-product rule added for Milo (Milo makes effectively one product, so "Milo" alone is a valid canonical name) over-applies to brands like Pakola that sell multiple distinct products (milk, sodas, juices) — "Pakola" alone isn't a specific food. Severity is low: lands at 0.28 confidence, same low-trust bucket as UNKNOWN, not a wrong-but-confident hallucination like the original #51 bugs. Deliberately not fixed this session to avoid a 5th prompt iteration without a proper eval set. **Next step if picked up: needs a labeled eval set first** (see "Immediate next steps" below) — do not attempt another blind prompt edit on this.
+
+---
+
+## Stage-by-stage status (Stages 1-4 substance unchanged this session except as noted above)
+
+### Stages 1, 1.5, 1.6, 1.7 - unchanged this session. All DONE.
+
+### Stage 2 - Item Field Extraction: batching (Issue #46) from prior session, prompt rewrite (#50) this session
+See "THIS SESSION'S WORK" above for #50. Batching/chunking design (chunk size 5, `extract_item_fields_batch()`) unchanged from prior session.
+
+### Stage 3 - Normalization: Pass 1 token-scan + Pass 3 prompt rewrite (#51) this session
+See "THIS SESSION'S WORK" above. `normalize_entity()` interface and Pass 1/2 core logic otherwise unchanged from prior sessions.
+
+### Stage 4 - Expiry Prediction: unchanged this session.
+
+---
+
+## Real findings, carried forward as open items
+
+1. **Latency: partially measured this session, not yet meeting budget on all receipts.** `process_receipt()` wall-clock via `test_pipeline_local.py`: 2.jpg ranged 12-16s across reruns (varies with cache state / Groq call count), 3.jpg ranged 7-14s. PRD.md §6's budget is 10s. 2.jpg is consistently over budget; 3.jpg is borderline, sometimes under. **No sub-stage breakdown yet** — can't tell how much is OCR vs Stage 2 batch calls vs Stage 3 Pass 3 calls vs DB round-trips. This is Issue #33, still open, still needs sub-stage timers before any latency optimization is proposed.
+2. **Groq 429 rate-limiting observed during this session's testing** (3.jpg run), auto-retried successfully by the client on a 1-5s backoff. Not fatal, but resurfacing under load — same rate-limit class as the original #46 batching fix. Not investigated further this session, flag if it starts failing (not just retrying) in future runs.
+3. **Pakola multi-product-brand gap** — see "Known follow-up" above.
+4. Carried from prior sessions, still open/unconfirmed: Pass 3 `ANDA DOZEN -> Andouille` gap (unrelated semantic-resolution failure, not investigated this session), Pass 3 free-text output testability.
 
 ---
 
 ## GitHub issue status (as of this handoff)
 
-**Closed this session:** #46 (Stage 2 batch food classification, fixes Groq TPM 429s).
+**Closed this session:** #49 (not a bug — duplicate row confirmed genuine, category classifier bug fixed).
 
-**Opened this session:** #48 (Stage 3 LLM reasoning loop on severely corrupted OCR input - low priority, fails safe, tracked not fixed).
+**Fixed this session, closing on PR merge:** #51 (Pass 3 hallucination), #50 (Stage 2 reasoning-loop/fail-safe).
 
-**Closed prior sessions:** #26, #27, #28, #29.
+**Opened this session:**
+- #52 — Stage 2 fail-safe not firing on empty-content classification (`is_food=True` instead of `UNKNOWN` on `finish_reason='length'` malformed responses). Suspected cause: `extractor.py`'s `_parse_batch_response()` likely only validates array-shape, not per-item empty content. **Not yet investigated — needs a read of the batch-parsing code before any fix is proposed.** This is a different, more serious failure mode than #50 (unsafe-direction fail-safe gap vs. reasoning-loop inefficiency) — was originally going to be filed but the tool call was declined; **still needs to be filed at the start of next session if not already done.**
 
-**Open, unchanged from previous handoffs:**
+**Still open, unchanged from previous handoffs:**
 - #16 - confidence-score garbage-line filter, unblocked, not picked up yet
 - #23 - 5.jpg multi-line header + Tax(%) format, deferred
-- #19 - superseded by #32 (user decision, prior session)
-- #48 - Stage 3 reasoning-loop gap, low priority (new this session)
+- #33 - latency re-measurement, partially done this session (see "Real findings" #1), sub-stage timers still needed
+- #34 - labeled `is_food` sample, not started — now also needed for the Pakola follow-up, not just Stage 2 accuracy measurement
+- #48 - Stage 3 reasoning-loop gap on severely corrupted OCR — **likely improved/resolved as a side effect of #50's prompt rewrite, not confirmed.** Worth a quick recheck next session rather than assuming still-open.
 
-**Open, from the 10 filed two sessions ago, status:**
-1. `pipeline.py` orchestrator (#25) - **DONE this session.** Built, wired end-to-end, tested against 2 real receipts. Batching (not the originally-planned concurrency-only approach) was needed to make it actually work under Groq's free-tier TPM limit - see Issue #46.
-2. `unit_extractor.py` - done (#26)
-3. `brand_matcher.py` - done (#27)
-4. `food_classifier.py` - done (#28), extended this session (#46)
-5. `extractor.py` - done (#29), extended this session (#46)
+**Open, from the earlier-filed set, status:**
 6. DB migration: add `brand` column - still not run
 7. Update Pydantic schemas (`brand`, `is_food` in `/receipts/upload` response) - still not done
-8. Real end-to-end validation (#32, replaces #19) - **partially done this session** via `test_pipeline_local.py` against 2 real receipts (36 items), but not formally closed/tracked as complete - worth confirming whether #32's original scope is now satisfied or needs more receipts
-9. Re-measure pipeline latency end-to-end (#33) - **still not done.** See "Real findings" #1 above - next concrete step.
-10. Build labeled `is_food` sample (#34) - not started, still blocking real Stage 2 accuracy measurement
+8. Real end-to-end validation (#32) - 2 of 4 real receipts tested (2.jpg, 3.jpg) across this and prior session. 1.jpg, 4.jpg still not run.
 
 ---
 
 ## Immediate next steps (in order)
 
-1. **Update ML_Pipeline.md** (§6 Stage 2 section, §9 pipeline structure + latency budget) - flagged above, not done this session, should happen before further drift.
-2. **#33 - Real end-to-end latency measurement.** Add a wall-clock timer around `process_receipt()` in `test_pipeline_local.py` or `pipeline.py` itself, rerun against both existing test receipts, get a real number against PRD.md §6's 10-second budget. The informal ~8-12s figures from this session's logs are Groq-call-time-only, not the real total.
-3. **Investigate the `'Everyday Instnt'` duplicate-row finding** before or alongside the latency measurement - it's inflating call count in the current test data for reasons unrelated to Issue #46's fix, would distort a fresh latency number if not understood first.
-4. Once latency is measured: #6/#7 (DB/API wiring), then decide if #32 needs more real-receipt coverage or can be closed.
-5. Real-receipt validation coverage: 2 of 4 available real receipts (2.jpg, 3.jpg) have now been run through the full pipeline this session. 1.jpg and 4.jpg have not yet been tried - worth running before considering #32 fully closed.
+1. **File issue #52 properly** (see above — attempted this session, tool call declined by user, needs to actually be filed) before starting new work, so it isn't lost.
+2. **Build the labeled eval set** (blocks both #34 and the Pakola follow-up). This was flagged multiple times this session as the right next move instead of further blind prompt iteration — a small set of real items with known-correct answers (Kimtiaz->not food, Milo->Milo, Pakola Milk->?, Tapal->Tea Bags, Bush Essence Mango->Mangoes, etc.) run as a batch eval, not one-off pipeline reruns eyeballed by hand.
+3. **#33 — sub-stage latency timers.** Wall-clock total is now known (partially) but not broken down. Needed before proposing any latency fix, especially since 2.jpg is consistently over the 10s budget.
+4. **Recheck #48** — may already be resolved by #50's prompt rewrite (same reasoning-loop failure mode, same root symptom). Quick confirm, don't assume.
+5. **Docs**: Normalization.md §9.1 has a now-incorrect example (Tapal -> Dried Lychee cited as correct) that needs fixing before anyone reads it and gets confused. ML_Pipeline.md still stale from before, unresolved multiple sessions running.
+6. Once latency is measured: #6/#7 (DB/API wiring), then 1.jpg/4.jpg real-receipt validation, then decide if #32 can close.
 
 ---
 
 ## Key decisions made this session (context for future reference, not to be re-litigated without new evidence)
 
-- **Stage 2 latency/rate-limit fix: batching (chunk size 5), not concurrency.** The prior session's plan (concurrency via `asyncio.Semaphore`) was tried first as part of building #25, found insufficient in real testing (concurrency bounds parallel requests, not tokens/minute - the actual constraint), and replaced with batching. This reverses the prior session's stated preference for concurrency-first ("doesn't touch a working tested contract... batching deferred, not rejected outright") - the deferral ended once real testing showed concurrency alone didn't solve the actual problem.
-- **Batch chunk size: 5**, decided over one-call-per-receipt - cuts call count ~5x (the main goal) while keeping index-tracking trivial and hallucination/misordering risk low on the batch response array. Not empirically tested at other chunk sizes.
-- **Stage 3 Pass 3 stays per-item, not batched** - deliberate scope decision made alongside Stage 2's batching work. Pass 3's call volume is naturally low (cache/fuzzy-match miss only, ~11% fallback rate), and batching would trade accuracy risk for throughput this stage doesn't need.
-- **`reasoning_effort="low"` added to all 3 Groq call sites** (Stage 2 single-item, Stage 2 batch, Stage 3 Pass 3) - real, documented Groq API parameter, fixes empty-content responses caused by the reasoning trace consuming the full token budget. **Does not fully eliminate the failure mode** on severely corrupted/ambiguous input - accepted as a known, low-priority, fail-safe-covered gap (Issue #48) rather than chased further, given low observed frequency (2/36 items) and confirmed correlation with physically-obstructed OCR input specifically.
-- **XML-structured prompt for batch classification** (`<role>`, `<instructions>`, `<examples>`, `<output_format>`) - applied Anthropic's documented prompt-engineering guidance for prompts mixing instructions/examples/context, per explicit request this session.
+- **Prompt fixes over data fixes for #51/#50.** Both root causes were prompt-design issues (forced guessing, no abstention path), not missing abbreviation-map coverage or missing training data. Explicitly decided NOT to extend `abbreviation_map.json` — the gap was Pass 1's matching *strategy* (whole-string only), not missing entries; the map already had `TAPAL`/`TEA` as valid keys before the token-scan fix.
+- **Word-boundary/anchor-word matching over more few-shot examples, when the two conflict.** Each prompt rewrite that just added more prose or more examples without sharpening the underlying rule tended to regress something else. The stable fixes were the ones that named a clear, checkable distinction (word-boundary in Pass 1, brand-is-product vs. brand-is-company in Pass 3, anchor-word-present vs. absent in Stage 2).
+- **Deferred the Pakola-style multi-product-brand gap rather than iterating a 5th time blind.** Explicit call: needs a labeled eval set to tune safely, not another single-example prompt patch.
+- **`check_cache.py` added as a standing utility**, not a one-off script — pushed directly to main. Any future Pass 3 prompt change should include a cache-clear step in the test process, not just a code change.
 
-Carried from prior sessions, still valid:
-- Stage 2's `food_classifier.py` model: Groq `openai/gpt-oss-20b`, chosen over Gemini and 2 OpenRouter free candidates after real testing (see Item_Extraction.md).
-- Stage 3/4 interface: `normalize_entity(item_name, quantity, unit, db)` is the permanent contract.
-- Frozen-signal category fix: checked on raw, unstripped `item_name`, before any keyword-based category matching.
-- Docs renamed: `Normalization_Training.md` -> `Normalization.md`, `Expiry_Training.md` -> `Expiry.md`. `_Training` suffix reserved for docs describing genuine model fine-tuning.
-- Test-fixture errors documented as such, not silently patched to make an eval look better.
+Carried from prior sessions, still valid: Stage 2's `food_classifier.py` model is Groq `openai/gpt-oss-20b`; Stage 3/4 interface is `normalize_entity(item_name, quantity, unit, db)`; frozen-signal category check runs on raw unstripped `item_name`; doc renames (`Normalization.md`/`Expiry.md`); test-fixture errors documented as such, not silently patched.
