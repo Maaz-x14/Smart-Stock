@@ -62,14 +62,14 @@
     ],
     "Breakfast Foods": [
       "cornflakes", "muesli", "pancake", "waffle", "bagel with cream cheese",
-      "breakfast burrito", "scrambled eggs"
+      "breakfast burrito", "scrambled eggs", "rusks"
     ],
     "Confectionery": [
       "chocolate", "candy", "marshmallow", "fudge", "truffle", "gummy",
       "halva"
     ],
     "Baby Food": [
-      "formula", "baby cereal", "puree", "pouch", "toddler snack", "rusks"
+      "formula", "baby cereal", "puree", "pouch", "toddler snack"
     ]
   }
 }
