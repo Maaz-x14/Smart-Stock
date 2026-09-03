@@ -73,13 +73,14 @@ Rules:
 - No explanation, no reasoning, no text before or after the JSON.
 - "is_food" = true only for edible food/beverage items for human consumption.
 - "is_food" = false for non-food items (medicine, cleaning products, toiletries, electronics, etc.).
-- If genuinely ambiguous, still output your best guess with a lower confidence score - do not refuse, do not add caveats.
+- "is_food" = false for garbled OCR fragments, ID/transaction strings, store names, or any text with no recognizable food word - output false with LOW confidence (0.1-0.3) immediately. Do NOT attempt to reverse-engineer a food name from partial letter matches or phonetic resemblance.
+- For items that ARE readable but genuinely ambiguous as a category, still output your best guess with a lower confidence score rather than refusing - this applies only to legible items, not unrecognizable noise.
 
 Examples:
 Item: "ORG STRWBRY" -> {"is_food": true, "confidence": 0.95}
 Item: "Supravit-M Tablet 10's" -> {"is_food": false, "confidence": 0.9}
-Item: "XYZFOODS RICE" -> {"is_food": true, "confidence": 0.6}"""
-
+Item: "XYZFOODS RICE" -> {"is_food": true, "confidence": 0.6}
+Item: "Kimtiaz" -> {"is_food": false, "confidence": 0.15}"""
 
 # Batch system prompt (Issue #46). XML-tagged sections (role/instructions/
 # examples/output_format) per Anthropic prompt-engineering guidance -
@@ -101,7 +102,10 @@ Rules:
 - "index" must match the input item's number exactly (1-based, matching the input list).
 - "is_food" = true only for edible food/beverage items for human consumption.
 - "is_food" = false for non-food items (medicine, cleaning products, toiletries, electronics, household goods, etc.).
-- If an item is genuinely ambiguous, still output your best guess with a lower confidence score. Do not refuse, do not add caveats, do not skip the item.
+- Receipt text is OFTEN abbreviated or has OCR noise attached (misread digits/letters in unit codes, sizes, or trailing characters like "28M1", "180M1", "BSCUT"). This is normal and does NOT make an item unresolvable. If a recognizable food or drink word, or a known brand associated with food/drink, is present anywhere in the text, classify it as food using that word - the presence of noise elsewhere in the string is not a reason to say false.
+- "is_food" = false ONLY when there is no food/drink word and no known food/drink brand anywhere in the text - e.g. a person's name, a transaction ID, a store name with no product words, or a string where every word is unintelligible. In that case output false with LOW confidence (0.1-0.3) immediately.
+- Do NOT invent or guess a specific food identity from letters alone when no actual food/brand word is present (e.g. do not decide a string "sounds like" a food based on partial letter overlap). This restriction is about inventing food words that aren't there - it does NOT apply when a real food/drink/brand word IS present in the text, even if surrounded by abbreviations or noise.
+- For items that ARE legible but genuinely ambiguous in category (e.g. an unfamiliar brand name with no clear product-type word), still output your best guess with a lower confidence score rather than refusing.
 - Treat every item independently. Earlier items in the list must NOT influence your judgment on later items - do not assume a "theme" for the batch (e.g. do not assume all items are groceries just because most are).
 - No explanation, no reasoning, no markdown, no text before or after the JSON array.
 </instructions>
@@ -124,16 +128,28 @@ Input:
 1. Colgate Total 100ml
 2. FRESH CHKN BREAST
 3. AA Battery 4pk
+4. Kimtiaz
+5. FBR Inv01ce #:_139a71220016Z1104333
 
 Output:
-[{"index": 1, "is_food": false, "confidence": 0.95}, {"index": 2, "is_food": true, "confidence": 0.9}, {"index": 3, "is_food": false, "confidence": 0.95}]
+[{"index": 1, "is_food": false, "confidence": 0.95}, {"index": 2, "is_food": true, "confidence": 0.9}, {"index": 3, "is_food": false, "confidence": 0.95}, {"index": 4, "is_food": false, "confidence": 0.15}, {"index": 5, "is_food": false, "confidence": 0.1}]
+</example>
+
+<example>
+Input:
+1. Bush Essence Mango 28M1
+2. Milo Drnk 180M1
+3. Peek Frns Cocnt Crnch Farm Hose F/P
+4. Everyday Instnt
+
+Output:
+[{"index": 1, "is_food": true, "confidence": 0.85}, {"index": 2, "is_food": true, "confidence": 0.9}, {"index": 3, "is_food": false, "confidence": 0.2}, {"index": 4, "is_food": true, "confidence": 0.4}]
 </example>
 </examples>
 
 <output_format>
 A single JSON array only. No prose, no code fences, no trailing commentary.
 </output_format>"""
-
 
 class ClassificationOutcome(Enum):
     FOOD = "food"

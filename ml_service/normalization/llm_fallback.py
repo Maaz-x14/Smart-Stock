@@ -71,26 +71,26 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL   = "openai/gpt-oss-20b"
 LLM_CONFIDENCE = 0.70
 
-PROMPT_TEMPLATE = """You are resolving a single line item from a grocery store receipt to its canonical food name. This is a ONE-SHOT task - you will not get a chance to ask a follow-up question, so if you are not genuinely confident, you must say so instead of guessing.
+PROMPT_TEMPLATE = """Receipt line item: '{raw_token}'
 
-Receipt line item: '{raw_token}'
+Resolve this to a specific canonical food name, ONLY if the words present clearly identify one specific food or drink.
 
-STRICT RULES:
-1. Only output a canonical food name if you can identify the SPECIFIC food with real confidence, based on the actual words in the token (brand names, clear abbreviations, or recognizable partial words).
-2. Do NOT invent a food that merely sounds similar or shares a few letters with the token. A superficial resemblance is not evidence.
-3. Do NOT let a brand name or store name alone lead you to guess a food category. A brand name by itself does not tell you what product it is.
-4. If the token is a garbled abbreviation with no version you can confidently expand, or if multiple unrelated foods seem equally plausible, output exactly: UNKNOWN
-5. Output ONLY the canonical food name (e.g. "Chicken Breast") or exactly "UNKNOWN" - nothing else. No explanation, no punctuation, no alternate guesses.
+Two brand situations are different - do not treat them the same:
+- If the brand name itself IS the product (e.g. "Milo", "Nutella", "Sprite" - the brand name is what you'd ask for by name), resolve it to that product directly, even with abbreviations or unit codes attached (e.g. "Milo Drnk 180M1" -> Milo).
+- If the brand is a general company/store name attached to an abbreviated, unclear product description (e.g. "Everyday Instnt", "Kimtiaz" with no product word at all), and you cannot tell which SPECIFIC product it refers to, output UNKNOWN rather than guessing.
 
-Examples of the correct call:
-- 'CHKN BRST BNLS' -> Chicken Breast (unambiguous abbreviation, resolve it)
-- 'TAPAL TEA BAGS DNEDR ELCHI' -> Tea Bags (TAPAL is a known tea brand, TEA BAGS is explicit - resolve using the clear words present, do not invent a flavor/variant you can't verify)
-- 'Kimtiaz' -> UNKNOWN (this is a store/mall name fragment, not a food - do not force a food guess just because part of it sounds like a food word)
-- 'Peek Frns Cocnt Crnch Farm Hose F/P' -> UNKNOWN (too garbled - multiple different foods seem equally plausible, none confidently resolvable)
-- 'Everyday Instnt' -> UNKNOWN (ambiguous - "Instnt" could expand to many different products; do not pick one guess and present it as certain)
+Do not output UNKNOWN just because a brand name is present or the text is abbreviated - only output UNKNOWN when, after accounting for the brand, there is no clear specific product identifiable.
 
-Now resolve the receipt line item above. Output only the canonical food name or UNKNOWN."""
+Output only the food name or the word UNKNOWN. No explanation.
 
+Examples:
+'CHKN BRST BNLS' -> Chicken Breast
+'TAPAL TEA BAGS DNEDR ELCHI' -> Tea Bags
+'Milo Drnk 180M1' -> Milo
+'Everyday Instnt' -> UNKNOWN
+'Kimtiaz' -> UNKNOWN
+
+Now resolve: '{raw_token}'"""
 
 def _cache_lookup(raw_token: str, db: Session) -> str | None:
     """Return cached canonical name for raw_token, or None if not cached."""
