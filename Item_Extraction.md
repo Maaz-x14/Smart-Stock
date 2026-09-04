@@ -238,6 +238,12 @@ This affects Stage 2's `food_classifier.py` and Stage 3's `llm_fallback.py` iden
 
 **On a second test receipt with cleaner OCR (no physical obstruction), 16/16 items resolved with zero failures of this kind** — supports the working conclusion that this is specifically triggered by genuinely unresolvable/severely corrupted input, not a systemic issue with the fix. Tracked as a separate low-priority follow-up (GitHub Issue #48) rather than reopening #46 — not chasing further right now given low observed frequency and correct fail-safe behavior.
 
+**Fixed (#50):** the underlying trigger was the is_food prompt having no explicit "don't force a guess" instruction — on a garbled, ambiguous OCR string, the model would keep proposing candidate food interpretations one after another, weighing each against the input without ever reaching a confident answer, until it ran out of its reasoning-token budget. The new batch prompt directly forbids inventing a food identity from partial letter overlap, requires a low-confidence `false` when no real food/brand word is present in the text, and adds worked examples of this exact failure pattern. Verified: 2 full pipeline reruns on the previously-affected receipt, no recurrence of the loop.
+
+**Separately tracked (#52, open):** the fail-safe for empty-content/malformed responses (should → UNKNOWN, was → is_food=True) is a distinct, still-open bug in `_parse_batch_response` — not fixed by this prompt change, just triggered less often now that the loop itself is rarer.
+
+Full prompt: `ml_service/item_extraction/food_classifier.py` (`BATCH_SYSTEM_PROMPT`).
+
 ## Model selection (Phase 1 — completed)
 
 Original 7-candidate shortlist was cut down before testing: several (Qwen3 14B/8B, Gemma 3 12B, Nemotron Nano 9B V2, GLM-4.5-Air) turned out to be stale/unconfirmed on Groq's own docs, and Llama 3.1 8B Instant was found **deprecated by Groq on 2026-06-17** (replaced by GPT-OSS 20B). Broader OpenRouter free-tier browsing also surfaced mostly large agentic/reasoning models, embeddings, and TTS — wrong shape for a small binary classifier. Final tested set: 4 candidates across Groq, Gemini, and OpenRouter.

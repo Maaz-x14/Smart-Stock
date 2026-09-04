@@ -207,6 +207,10 @@ pass2_fuzzy("SALT", db)       # -> (None, 0.0)  - too short, skipped (would have
 
 **Caveat, found in the same follow-up testing:** `reasoning_effort="low"` reduces but does **not** fully eliminate this failure mode. On genuinely ambiguous/corrupted input, the model can still enter a reasoning repetition loop and exhaust the token budget regardless of the parameter. Confirmed via the `reasoning` field content itself — the trace showed the model looping on near-identical phrasing ("Could be X but maybe Y??") multiple times without reaching a conclusion. This is being tracked as a separate, low-priority, accepted-behavior issue (see Section 10) rather than patched further right now — the existing fail-safe (`(None, 0.0)` return → item surfaced to user, never dropped) already handles it correctly, and it was only observed on severely corrupted OCR input (2/36 items across 2 real test receipts; the second receipt, with cleaner OCR, had zero such failures).
 
+**Fixed (#51):** the minimal single-line prompt ("Reply with just the canonical food name, nothing else") had no abstention path, which turned out to be the root cause of several wrong canonicals found in real-receipt testing (`Tapal Tea Bags...` → `Dried Lychee`, `Everyday Instnt` → `Instant Noodles`, `Everyday Tea Whtnr` → `White Tea`) — with no way to say "I don't know," the model pattern-matched to the nearest plausible-sounding food word instead of admitting it couldn't resolve an abbreviated, brand-prefixed string. New prompt distinguishes two brand situations: brand-IS-the-product (Milo, Nutella — resolve directly, even with unit-code noise attached) vs. brand-is-a-generic-company-name-plus-unclear-product (Kimtiaz, Everyday Instnt — output `UNKNOWN` rather than guess), with worked examples of both. `UNKNOWN` is treated as a Pass 3 miss, same as empty/malformed content — not cached, not logged as an error.
+
+**Testing gotcha:** Pass 3 checks `normalization_cache` *before* calling the LLM — a prompt rewrite has zero effect on a previously-seen token until its cache row is cleared (`python check_cache.py clear-all`). Cost real debugging time this session before being caught — a prompt fix looked like it wasn't working when it was just serving stale cached results.
+
 Pass 3 remains **per-item, not batched** — a deliberate scope decision made alongside Stage 2's batching work (Issue #46). Pass 3 only fires on a cache + fuzzy-match miss, so call volume per receipt is naturally low (11.1% fallback rate per Section 9's eval), and batching here would trade accuracy risk for throughput this stage doesn't actually need.
 
 **Prompt design:** deliberately minimal. A longer prompt causes hedging, explanations, or multi-word non-canonical answers. The load-bearing instruction is "Reply with just the canonical food name, nothing else."
@@ -257,6 +261,8 @@ assign_category(canonical_name, db, raw_token)
 Validated by this session's real eval run: `FRZ BROC` correctly resolved `category = Frozen` (see Section 9).
 
 **Known follow-up (observed in real pipeline testing, not yet fixed):** `'Pakola Flvor Mlk Strwbry 125M1'` normalized to `category=Produce` while its choco sibling (`'Pakola Flvor Mlk Choco 125M1'`) correctly resolved `category=Dairy` — likely a keyword-priority interaction where "Strwbry"/Strawberry-related keywords rank ahead of the milk/dairy signal for that specific compound name. Not investigated further this session; minor and doesn't affect Stage 3/4 correctness structurally, flagged for future cleanup.
+
+**Fixed (#49):** root-caused as raw substring matching over `CATEGORY_KEYWORDS` in dict insertion order — Produce's keyword `"berry"` is a substring of `"strawberry"`, so it matched before Dairy's `"milk"` keyword was ever checked. Fixed with word-boundary matching instead of raw substring containment. Verified: `'Pakola Flvor Mlk Strwbry'` now resolves `category=Dairy`.
 
 ### 5.7 normalizer.py — the orchestrator
 
@@ -349,7 +355,7 @@ NormalizedItem(
 Distinct from the synthetic eval above — this ran Stage 3 as part of the full pipeline against real OCR'd receipt data, not hand-picked test strings.
 
 Two real receipts, 36 items total (20 + 16):
-- Receipt 1: several items resolved correctly via Pass 2/Pass 3 (e.g. `'Tapal Tea Bags...' → 'Dried Lychee'`, `'Ponam Sugar 1kg' → 'Sugar'`). 2 items failed to resolve (`'Kimtiaz'`, `'Peek Frns Cocnt Crnch Farm Hose F/P'`) — both tied to severely corrupted OCR (a hand blocking part of the receipt during photo capture); root cause was the reasoning-loop issue described in Section 5.4, not a Stage 3 logic bug.
+- Receipt 1: several items resolved correctly via Pass 2/Pass 3 (e.g. `'Ponam Sugar 1kg' → 'Sugar'`). `'Tapal Tea Bags...'` originally resolved to `'Dried Lychee'` in this run — later found wrong and fixed as #51 (see Section 5.4); post-fix behavior resolves via the brand-is-product/generic distinction or `UNKNOWN` if genuinely ambiguous. 2 items failed to resolve (`'Kimtiaz'`, `'Peek Frns Cocnt Crnch Farm Hose F/P'`) — both tied to severely corrupted OCR (a hand blocking part of the receipt during photo capture); root cause was the reasoning-loop issue described in Section 5.4, not a Stage 3 logic bug.
 - Receipt 2 (cleaner OCR): 16/16 food items resolved correctly via Pass 2/Pass 3, zero failures.
 
 This is the first time Stage 3 has been exercised against real, messy OCR output end-to-end rather than synthetic strings — the 2 failures observed were input-quality-driven, not structural.
