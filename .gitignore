@@ -48,3 +48,10 @@ ml_service/models/
 
 
 /inference
+
+latency_results.json
+run_2a.json
+run_2b.json
+run_3a.json
+run_3b.json
+

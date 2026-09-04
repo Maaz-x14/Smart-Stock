@@ -342,18 +342,34 @@ ml_service/
 
 ### Latency Budget (per receipt, CPU inference)
 
-**Note:** Stage 2's LLM-call latency dominates and is now understood in detail (see Item_Extraction.md's per-item measurement, ~658ms/item single-call, and the batching fix in §6 above that cuts total Groq call count ~5x per receipt). **Full end-to-end wall-clock latency for the built pipeline has still not been formally measured** — only informal evidence exists from `test_pipeline_local.py` log timestamps (~8-12s of visible Groq-call time across 2 test receipts), which excludes OCR/Row Reconstruction/Row Parser time and DB round-trips. A real timer around `process_receipt()` is the next concrete step (see HANDOFF.md).
+**Measured (Issue #33, `benchmark_latency.py`), 4 runs, 2 real receipts, 1 rep each, back-to-back Groq rate-limit contamination excluded:**
 
-| Stage                  | Target Latency                                                                            |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| Image preprocessing    | N/A — handled internally by PaddleOCR                                                    |
-| OCR (PaddleOCR)        | ~5-6s (measured)                                                                          |
-| Row reconstruction     | Not yet measured — expected negligible (pure Python, no model)                           |
-| Prefilter + Row Parser | Not yet measured — expected negligible                                                   |
-| Item Field Extraction  | ~658ms per single-item LLM call (measured); batched in chunks of 5 in production, reducing total call count ~5x per receipt but per-call latency itself is unchanged |
-| Normalization          | < 300ms (target, unvalidated against real timing data — correctness validated, not speed) |
-| Expiry prediction      | < 100ms (target, unvalidated against real timing data — correctness validated, not speed) |
-| **Total**        | **Needs full wall-clock re-measurement — pipeline is built and correctness-validated on 2 real receipts, but no formal end-to-end timer has been run yet** |
+| Stage                  | Mean    | Median  |
+| ---------------------- | ------- | ------- |
+| OCR (PaddleOCR)         | 5352ms  | 5356ms  |
+| Row reconstruction      | 2ms     | negligible |
+| Row parser              | 3ms     | negligible |
+| Item Field Extraction   | 5602ms  | 5410ms  |
+| Normalization           | 922ms   | 664ms   |
+| Expiry prediction       | 22ms    | negligible |
+| **End-to-end**          | **11904ms** | **11453ms** |
+
+Per-receipt breakdown:
+
+| Receipt | Runs | End-to-end mean | vs. 10s budget |
+| --- | --- | --- | --- |
+| 2.jpg (18 items, 11 food) | 2 | 14324ms | Over budget |
+| 3.jpg (14 items, 7 food) | 2 | 9484ms | Near/under budget |
+
+**Hardware/runtime:** Linux x86_64, 8 CPU cores, Python 3.12.3, PaddleOCR model pre-warmed (excluded from timed OCR figures above).
+
+**Caveats:**
+- n=2 per receipt — enough for mean/median, not for a real p95. Not reported.
+- Groq free-tier rate limits: back-to-back reps hit 429s, inflating retry-backoff into apparent latency — those runs were detected and excluded, not averaged in.
+- Normalization cache was warm (not cleared between the two runs per receipt) — 3.jpg's low normalization time (89-109ms) partly reflects Pass 3 cache hits from receipt 2's earlier run, not a cold-cache number.
+- Item Field Extraction and Normalization are the two Groq-dependent stages — both are the primary latency + rate-limit risk, consistent with HANDOFF's prior finding.
+
+**Bottleneck:** OCR and Item Field Extraction are comparable in cost (~5.3-5.6s each), together accounting for ~90% of end-to-end latency. Row stages are negligible.
 
 ---
 
@@ -399,6 +415,6 @@ Unchanged from v1.0 — see original doc content. CER/WER not measured (pretrain
 | Metric              | Definition                                           | Target | Status |
 | ------------------- | ------------------------------------------------------ | ------ | ------ |
 | Item-level Accuracy | % items correctly extracted + named on test receipts | ≥ 85% | 34/36 = 94.4% across 2 real receipts this session (informal, not yet a formal measurement against ground truth) |
-| Processing Time     | Wall clock, full pipeline, CPU                       | < 10s  | **Not yet measured** — see Latency Budget section above and HANDOFF.md next steps |
+| Processing Time     | Wall clock, full pipeline, CPU                       | < 10s  | **Measured (Issue #33): mean 11.9s, median 11.5s across 2 receipts — over budget on 2.jpg (14.3s), near budget on 3.jpg (9.5s). See Latency Budget above.** |
 
-**Pipeline is now built and running end-to-end on real data** (`pipeline.py`, #25, validated against 2 of 4 available real receipts) — a major change from the prior "pipeline.py currently empty" status. Formal wall-clock latency measurement and broader real-receipt coverage (2 more receipts available, not yet tried) remain the next concrete steps.
+**Pipeline is now built and running end-to-end on real data** (`pipeline.py`, #25, validated against 2 of 4 available real receipts) — a major change from the prior "pipeline.py currently empty" status. Broader real-receipt coverage (2 more receipts available, not yet tried) and latency optimization (OCR + Item Field Extraction are the two bottleneck stages, see §9) remain the next concrete steps.
