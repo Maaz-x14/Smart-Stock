@@ -90,7 +90,7 @@ Both `food_classifier.py` and `llm_fallback.py` prompts went through multiple re
 
 ---
 
-## Known follow-up, NOT fixed this session (low priority)
+## Known follow-up, NOT fixed this session (very low priority)
 
 **Pass 3 resolves multi-product brand names too eagerly.** Example: `Pakola MIk Uht 250M1` -> `'Pakola'` (pass 3, confidence 0.28, hard_default fallback). The brand-is-product rule added for Milo (Milo makes effectively one product, so "Milo" alone is a valid canonical name) over-applies to brands like Pakola that sell multiple distinct products (milk, sodas, juices) — "Pakola" alone isn't a specific food. Severity is low: lands at 0.28 confidence, same low-trust bucket as UNKNOWN, not a wrong-but-confident hallucination like the original #51 bugs. Deliberately not fixed this session to avoid a 5th prompt iteration without a proper eval set. **Next step if picked up: needs a labeled eval set first** (see "Immediate next steps" below) — do not attempt another blind prompt edit on this.
 
