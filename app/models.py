@@ -46,6 +46,8 @@ class InventoryItem(Base):
     id                 = Column(Integer,      primary_key=True)
     user_id            = Column(Integer,      ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     canonical_name     = Column(String(100),  nullable=False)
+    brand              = Column(String(100))  # nullable - Stage 2's brand_matcher.py returns
+                                                # None on no lexicon match, a valid outcome (#30)
     quantity           = Column(Numeric(8,2), nullable=False)
     unit               = Column(String(20))
     category           = Column(String(50),   nullable=False)
