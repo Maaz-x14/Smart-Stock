@@ -65,17 +65,19 @@ Non-food items are **not silently discarded**. They remain visible as detected-b
 
 <img src="assets/svgs/smart_stock_pipeline.svg" alt="Smart-Stock ML pipeline" width="620" />
 
+**The pipeline is built, wired end-to-end (`pipeline.py`), and validated against real Pakistani retail receipts** — see Current Status below.
+
 ### Stage 1 — OCR
 
 **PaddleOCR / PP-OCRv6**, pretrained, extracts receipt text and bounding boxes.
 
-A fine-tuned TrOCR model was built first. Real-receipt testing showed that PaddleOCR was both more accurate on the tested item/quantity/price lines and dramatically faster: approximately **5–6s/receipt on CPU** versus roughly **480s** for the earlier TrOCR path.
+A fine-tuned TrOCR model was built first. Real-receipt testing showed that PaddleOCR was both more accurate on the tested item/quantity/price lines and dramatically faster: approximately **5.4s/receipt** (measured, see ML_Pipeline.md §9) versus roughly **480s** for the earlier TrOCR path.
 
 ### Stage 1.5 — Row Reconstruction
 
 OCR produces text boxes rather than logical receipt rows. SmartStock estimates skew, deskews y-positions, clusters boxes into rows, and orders fields left-to-right.
 
-Validated on four real Pakistani retail receipts.
+Validated on four real Pakistani retail receipts. Negligible latency (~2ms measured).
 
 ### Stage 1.6 — Prefilter
 
@@ -96,7 +98,7 @@ Rather than assuming a fixed format, SmartStock detects the receipt's own header
 
 It extracts `item_name`, `quantity`, `price`, `discount`, and `total`, with handling for merged headers, OCR numeric corruption, fallback parsing, and split rows.
 
-**Validation:** 100% field match on the initial four real receipt samples.
+**Validation:** 100% field match on the initial four real receipt samples. Negligible latency (~3ms measured).
 
 ### Stage 2 — Item Field Extraction
 
@@ -106,9 +108,11 @@ The original DistilBERT NER stage was retired after row parsing made its origina
 |---|---|
 | Unit | Regex + OCR surface variants |
 | Brand | Curated lexicon + RapidFuzz |
-| `is_food` | LLM binary classification gate |
+| `is_food` | LLM binary classification gate (Groq, batched in chunks of 5) |
 
 The brand matcher intentionally does not guess unmatched food nouns as brands. A missing brand is valid.
+
+**Measured latency: ~5.6s/receipt** (Groq-dependent, the primary rate-limit risk stage — see ML_Pipeline.md §9).
 
 ### Stage 3 — Food Name Normalization
 
@@ -125,9 +129,9 @@ Three-pass normalization:
 
 1. Abbreviation lookup
 2. Fuzzy matching
-3. LLM fallback
+3. LLM fallback (Groq, with an explicit UNKNOWN abstention path — see Normalization.md §5.4)
 
-**Status:** implemented; real Stage 1.5–2 re-validation pending.
+**Status:** validated against real pipeline output — 97.2% canonical match rate on synthetic eval, 34/36 items resolved end-to-end on real receipts. Measured latency: ~922ms/receipt mean (cache-dependent).
 
 ### Stage 4 — Expiry Prediction
 
@@ -141,7 +145,7 @@ Category fallback
 Hard default
 ```
 
-**Status:** implemented; real Stage 1.5–2 re-validation pending.
+**Status:** validated against real pipeline output. 100% within ±2 days on a synthetic 16-case eval. Negligible latency (~22ms measured).
 
 ---
 
@@ -179,14 +183,14 @@ The NER experiment remains documented as historical work.
 | Row parser | ✅ Complete — 100% match on initial 4-receipt sample |
 | Unit extraction | ✅ Complete |
 | Brand matcher | ✅ Complete |
-| `is_food` classifier | ✅ Complete — real API smoke-tested |
-| Stage 2 extractor | ⏳ Components complete; orchestration pending |
-| Pipeline orchestrator | ⏳ Pending |
-| Normalization | ✅ Built; real-data validation pending |
-| Expiry prediction | ✅ Built; real-data validation pending |
-| End-to-end validation | ⏳ Pending |
-| End-to-end latency | ⏳ Needs re-measurement |
-| `is_food` evaluation set | ⏳ Needs labeled data |
+| `is_food` classifier | ✅ Complete — batched, validated on real receipts, reasoning-loop bug fixed |
+| Stage 2 extractor | ✅ Complete — orchestrator wired |
+| Pipeline orchestrator | ✅ Complete — `pipeline.py`, validated end-to-end on real receipts |
+| Normalization | ✅ Validated on real pipeline output — LLM fallback abstention fix landed |
+| Expiry prediction | ✅ Validated on real pipeline output |
+| End-to-end validation | ✅ Done — 2 of 4 real receipts run through the full pipeline; remaining 2 not yet tried |
+| End-to-end latency | ✅ Measured — ~11.9s mean / ~11.5s median across 2 receipts (over the 10s budget on one, near it on the other); OCR + Item Field Extraction are the bottleneck stages |
+| `is_food` evaluation set | ⏳ Still needs labeled data — real pipeline runs show correct classification but this isn't a substitute for a formal measurement |
 
 The repository deliberately distinguishes **implemented**, **validated**, and **measured** work.
 
@@ -222,8 +226,8 @@ Recipe suggestions use Spoonacular; expiry alerts are driven by scheduled jobs.
 | Backend | FastAPI, Python, Uvicorn |
 | OCR | PaddleOCR / PP-OCRv6 |
 | Parsing | Python, regex, RapidFuzz |
-| Item extraction | Regex, brand lexicon, LLM API |
-| Normalization | Lookup tables, RapidFuzz, LLM fallback |
+| Item extraction | Regex, brand lexicon, LLM API (Groq) |
+| Normalization | Lookup tables, RapidFuzz, LLM fallback (Groq) |
 | Expiry | PostgreSQL shelf-life reference + confidence scoring |
 | Database | PostgreSQL, SQLAlchemy 2.0, Alembic |
 | Authentication | JWT |
@@ -238,24 +242,27 @@ Recipe suggestions use Spoonacular; expiry alerts are driven by scheduled jobs.
 Smart-Stock/
 ├── app/                    # FastAPI application + DB models
 ├── ml_service/
-│   ├── ocr/               # OCR + row reconstruction
-│   ├── parsing/            # Prefilter + row parser
-│   ├── item_extraction/   # Unit, brand, is_food
-│   ├── normalization/     # Food-name normalization
-│   ├── expiry/             # Shelf-life + expiry prediction
-│   ├── ner/                # Retired NER record
-│   └── pipeline.py         # End-to-end orchestrator
-├── db/seeds/               # Reference data
-├── migrations/             # Alembic migrations
-├── assets/svgs/            # Pipeline diagrams
+│   ├── ocr/                # OCR + row reconstruction
+│   ├── parsing/             # Prefilter + row parser
+│   ├── item_extraction/    # Unit, brand, is_food
+│   ├── normalization/      # Food-name normalization
+│   ├── expiry/              # Shelf-life + expiry prediction
+│   ├── ner/                 # Retired NER record
+│   └── pipeline.py          # End-to-end orchestrator (built, validated)
+├── db/seeds/                # Reference data
+├── migrations/              # Alembic migrations
+├── assets/svgs/             # Pipeline diagrams
+├── benchmark_latency.py     # Per-stage + end-to-end latency benchmark (#33)
+├── check_cache.py           # normalization_cache inspect/clear CLI
+├── test_pipeline_local.py   # Local end-to-end pipeline test harness
 ├── PRD.md
 ├── Architecture.md
 ├── ML_Pipeline.md
 ├── Item_Extraction.md
+├── Normalization.md
+├── Expiry.md
 ├── OCR_Training.md
 ├── NER_Training.md
-├── Normalization_Training.md
-├── Expiry_Training.md
 ├── API_Spec.md
 └── DB_Schema.md
 ```
@@ -281,11 +288,11 @@ The goal is not to attach an AI model to an inventory app. The goal is to build 
 ## Documentation
 
 - [`Architecture.md`](Architecture.md) — system design
-- [`ML_Pipeline.md`](ML_Pipeline.md) — complete pipeline
+- [`ML_Pipeline.md`](ML_Pipeline.md) — complete pipeline, including measured latency
 - [`Item_Extraction.md`](Item_Extraction.md) — Stage 2 design
+- [`Normalization.md`](Normalization.md) — Stage 3 design
+- [`Expiry.md`](Expiry.md) — Stage 4 design
 - [`OCR_Training.md`](OCR_Training.md) — OCR evaluation + TrOCR history
-- [`Normalization_Training.md`](Normalization_Training.md) — normalization
-- [`Expiry_Training.md`](Expiry_Training.md) — expiry prediction
 - [`API_Spec.md`](API_Spec.md) — REST API
 - [`DB_Schema.md`](DB_Schema.md) — PostgreSQL schema
 - [`PRD.md`](PRD.md) — product requirements
@@ -295,13 +302,12 @@ The goal is not to attach an AI model to an inventory app. The goal is to build 
 
 ## Roadmap
 
-- [ ] Wire Stage 2 extractor
-- [ ] Wire end-to-end pipeline orchestrator
-- [ ] Build labeled `is_food` evaluation set
-- [ ] Re-validate Normalization + Expiry on real receipt output
-- [ ] Re-measure end-to-end latency
-- [ ] Expand receipt-format coverage
-- [ ] Run full end-to-end accuracy evaluation
+- [ ] Build labeled `is_food` evaluation set (#34)
+- [ ] Validate remaining 2 real receipts (1.jpg, 4.jpg) end-to-end
+- [ ] Optimize latency — OCR and Item Field Extraction are the two bottleneck stages, end-to-end currently exceeds the 10s budget on larger receipts
+- [ ] Expand receipt-format coverage (multi-line/Tax% header format, issue #23)
+- [ ] Run full end-to-end accuracy evaluation against ground truth
+- [ ] Fix Stage 2 fail-safe gap for empty-content classification responses (#52, open)
 
 ---
 
