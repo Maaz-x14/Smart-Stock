@@ -12,7 +12,7 @@
 - Push back on bad ideas. Distinguish facts from speculation.
 - Individual per-file commits.
 - Ruthless mentor mode: stress-test everything, don't sugarcoat.
-- Present files at end of response as attachments, not pasted inline — so specific lines can be edited without re-pasting whole files. **Always the FULL file, never a diff/snippet** — the person applies it directly. (Diffs were tried this session for doc updates and failed to apply cleanly — back to full files only.)
+- Present files at end of response as attachments, not pasted inline — so specific lines can be edited without re-pasting whole files. **Always the FULL file, never a diff/snippet** — the person applies it directly. (Diffs were tried once for doc updates and failed to apply cleanly — full files only, permanently.)
 
 ---
 
@@ -25,13 +25,13 @@ Smart-Stock: portfolio/CV project. Reads grocery receipts, predicts expiry dates
 | Doc | Status |
 |---|---|
 | PRD.md, Architecture.md, API_Spec.md, DB_Schema.md, OCR_Training.md, NER_Training.md | Current as of previous handoff, unchanged this session |
-| ML_Pipeline.md | **Updated this session (#33).** §9 Latency Budget filled in with real measured numbers (was "not yet measured" placeholder). §10 Processing Time row updated with the same. |
-| Item_Extraction.md | **Updated this session.** §4.2 now documents #50's fix (batch is_food prompt rewrite) instead of listing it as an open gap. |
-| Normalization.md | **Updated this session.** §5.4 documents #51's fix (Pass 3 abstention path) + the cache-clear testing gotcha. §5.6 documents #49's category-classifier fix. §9.1's stale `Tapal Tea Bags -> 'Dried Lychee'` example corrected to reflect the fix. |
+| ML_Pipeline.md | Updated prior session (#33 latency numbers). Unchanged this session. |
+| Item_Extraction.md | Updated prior session (#50 fix writeup). Unchanged this session. |
+| Normalization.md | Updated prior session (#49/#51 fix writeups). Unchanged this session. |
 | Expiry.md | Current as of previous handoff, unchanged this session |
-| README.md | **Rewritten this session.** Was badly stale — pipeline orchestrator, Stage 2 extractor, and end-to-end validation were all marked "pending" despite being done in a prior session. Now reflects built/validated/measured status accurately, doc list fixed (`Normalization.md`/`Expiry.md`, not old `_Training.md` names), roadmap replaced with real open items. |
+| README.md | Rewritten prior session. Unchanged this session. |
 
-**Naming note:** `Normalization_Training.md`/`Expiry_Training.md` renamed to `Normalization.md`/`Expiry.md` (prior session) - neither stage trains a model (3-pass lookup + rule-based tiers), the `_Training` suffix was a leftover from NER-era naming. `OCR_Training.md` keeps its name - TrOCR fine-tuning genuinely happened there.
+**Naming note:** `Normalization_Training.md`/`Expiry_Training.md` renamed to `Normalization.md`/`Expiry.md` (earlier session) - neither stage trains a model (3-pass lookup + rule-based tiers), the `_Training` suffix was a leftover from NER-era naming. `OCR_Training.md` keeps its name - TrOCR fine-tuning genuinely happened there.
 
 ---
 
@@ -53,41 +53,34 @@ Receipt Image
 
 ---
 
-## THIS SESSION'S WORK (#33 latency re-measurement + doc backfill for last session's fixes)
+## THIS SESSION'S WORK (#52 investigation, CLOSED — no bug found in current code)
 
-No new bugs found this session — pure measurement + documentation work, closing out debt from the prior session (#49/#50/#51 were fixed then, but never written up in the docs).
+### #52 — Stage 2 fail-safe not firing on empty-content classification, CLOSED (verified correct, not a code fix)
+Read `_parse_batch_response()` and `classify_is_food_batch()` in `food_classifier.py` end to end against the original report (`finish_reason='length'` + empty content -> `is_food=True` instead of `UNKNOWN`).
 
-### #33 — Latency re-measurement, CLOSED
-Built `benchmark_latency.py`: calls the same stage functions `process_receipt()` calls, individually timed, without modifying `pipeline.py`. Iterated twice on the design:
-- v1 (`--reps 5`, no rate-limit handling): run on real Groq free tier, hit cascading 429s — retry-backoff got counted as pipeline latency, badly inflating Item Field Extraction/Normalization numbers.
-- v2 (current): `--reps` default dropped to 1, added a logging-handler-based rate-limit watcher that flags any run hitting a 429 mid-stage so it's excluded from stats instead of silently averaged in.
+**Could not reproduce in current code.** Traced every failure path by hand:
+- `raw is None` -> `_parse_batch_response` returns `None` immediately.
+- `raw == ""` -> `json.loads("")` raises `JSONDecodeError` -> caught -> `None`.
+- Truncated mid-array, wrong length, missing/duplicate index, non-bool `is_food` (int `1`/`0` correctly rejected — `isinstance(1, bool)` is `False` in Python), out-of-range confidence, non-list top level — all correctly return `None`.
+- `classify_is_food_batch()`: `parsed is None` -> every item in the chunk resolves to `UNKNOWN`. No partial trust, no path that could produce `True` from malformed input.
 
-**Real numbers** (4 runs — 2.jpg x2, 3.jpg x2, 1 rep each, spaced out manually to avoid TPM limits): end-to-end mean 11.9s / median 11.5s. Per-stage: OCR ~5.4s, Item Field Extraction ~5.6s (these two are ~90% of total), Normalization ~0.9s mean (cache-dependent, cache was warm between the two runs per receipt — not a cold-cache number), row stages + expiry negligible (<25ms). 2.jpg (14.3s) is over PRD.md §6's 10s budget; 3.jpg (9.5s) is near/under it. n=2 per receipt — no real p95 reported.
+Wrote `test_issue_52_failsafe.py` — 15 regression tests (11 unit tests directly on `_parse_batch_response`, 4 end-to-end on `classify_is_food_batch()` with the Groq call mocked, no live API/rate-limit risk). All 15 pass against current code.
 
-Written into `ML_Pipeline.md` §9 and §10. `benchmark_latency.py` committed to repo root (dev tool, not pipeline code).
+**Working conclusion (labeled as such, not verified):** the original report predates this project's #50/#51 prompt+parsing hardening work. Most likely the parsing code was already this strict when #52 was filed, and whatever produced the false `is_food=True` was a different, already-fixed path (or a version-shift in this file not directly attributable to #52 specifically) — not confirmed, no historical diff was reviewed to prove this. Not chasing further: current code is verified correct and now has permanent regression coverage against this exact failure shape, which is what actually matters going forward.
 
-### Doc backfill — #49, #50, #51, #32
-Prior session fixed these but never updated the docs. This session:
-- Pulled actual GitHub issue comments/commits for #49/#50/#51 before writing anything — #50 and #51 had no resolution text in the issue body itself, only in commit messages (`17cdb8c` for #51's Pass 3 prompt, the shipped `BATCH_SYSTEM_PROMPT` for #50), so those were read directly rather than assumed from memory.
-- #49: dup-row finding not worth documenting (was a non-bug). Category classifier fix -> `Normalization.md` §5.6.
-- #50: batch is_food prompt fix -> `Item_Extraction.md` §4.2. Kept the writeup generic (describes the reasoning-loop *mechanism*, not the specific example strings) per explicit request — a reader without prior context should still understand the failure mode.
-- #51: Pass 3 abstention-path fix + the cache-clear testing gotcha -> `Normalization.md` §5.4. Stale `Tapal Tea Bags -> 'Dried Lychee'` example in §9.1 corrected.
-- #32: already reflected from the prior session, confirmed no further changes needed.
-
-### README.md rewrite
-Full rewrite, not surgical — justified because the drift was structural (whole status table wrong), not a few stale lines. Current Status table now correct, real latency numbers inline, roadmap replaced with actual open items (#34, #52, 1.jpg/4.jpg, latency optimization, #23).
+Closed via issue comment + `state: closed`, `state_reason: completed`. `test_issue_52_failsafe.py` committed to repo root.
 
 ---
 
 ## Prompt iteration notes
 
-Not applicable this session — no prompts were touched. See prior handoff (preserved in git history / `Item_Extraction.md` §4.2, `Normalization.md` §5.4) for the #50/#51 prompt-design reasoning if it needs to be revisited.
+Not applicable this session — no prompts were touched. See `Item_Extraction.md` §4.2 / `Normalization.md` §5.4 for the #50/#51 prompt-design reasoning if it needs to be revisited.
 
 ---
 
 ## Known follow-up, NOT fixed this session (very low priority)
 
-**Pass 3 resolves multi-product brand names too eagerly.** Example: `Pakola MIk Uht 250M1` -> `'Pakola'` (pass 3, confidence 0.28, hard_default fallback). Still deferred — needs a labeled eval set to tune safely (#34), not another blind prompt edit. Unchanged from prior handoff, not touched this session.
+**Pass 3 resolves multi-product brand names too eagerly.** Example: `Pakola MIk Uht 250M1` -> `'Pakola'` (pass 3, confidence 0.28, hard_default fallback). Still deferred — needs a labeled eval set to tune safely (#34), not another blind prompt edit. Unchanged, not touched this session.
 
 ---
 
@@ -95,9 +88,9 @@ Not applicable this session — no prompts were touched. See prior handoff (pres
 
 ### Stages 1, 1.5, 1.6, 1.7 - unchanged this session. All DONE.
 
-### Stage 2 - Item Field Extraction: unchanged this session (code). #50's fix documented this session — see above.
+### Stage 2 - Item Field Extraction: no code change this session. #52 investigated and closed (no bug found) — see above.
 
-### Stage 3 - Normalization: unchanged this session (code). #49/#51's fixes documented this session — see above.
+### Stage 3 - Normalization: unchanged this session.
 
 ### Stage 4 - Expiry Prediction: unchanged this session.
 
@@ -105,48 +98,43 @@ Not applicable this session — no prompts were touched. See prior handoff (pres
 
 ## Real findings, carried forward as open items
 
-1. **Latency: now formally measured (#33, closed this session).** See "THIS SESSION'S WORK" above for numbers. 2.jpg is consistently over the 10s budget; 3.jpg is near/under it. OCR and Item Field Extraction are the two stages worth optimizing if this gets picked up — everything else is negligible.
-2. **Groq free-tier TPM is fragile under back-to-back calls** — confirmed hard this session (the v1 benchmark script's `--reps 5` triggered cascading 429s). Real pipeline runs (not just benchmarking) should still be spaced out; not yet a problem in normal single-receipt-at-a-time usage, but worth remembering before any batch-testing script.
+1. **Latency: formally measured (#33, closed prior session).** 2.jpg consistently over the 10s budget; 3.jpg near/under it. OCR and Item Field Extraction are the two stages worth optimizing if picked up.
+2. **Groq free-tier TPM is fragile under back-to-back calls** — confirmed prior session. Real pipeline runs should be spaced out.
 3. **Pakola multi-product-brand gap** — see "Known follow-up" above, unchanged.
 4. Carried from prior sessions, still open/unconfirmed: Pass 3 `ANDA DOZEN -> Andouille` gap, Pass 3 free-text output testability.
+5. **No persisted DB/API path for Stage 2 output yet** (#30/#31, still open) — is_food/brand/unit are computed correctly but nothing downstream stores them. This is the next real blocker, not a nice-to-have.
 
 ---
 
 ## GitHub issue status (as of this handoff)
 
-**Closed this session:** #33 (latency re-measurement).
-
-**No code fixed this session** — #49/#50/#51 were already fixed/closed in the prior session; this session only wrote up their docs (see above).
+**Closed this session:** #52 (fail-safe investigated, verified already correct, closed with regression tests — not a code fix).
 
 **Still open, unchanged from previous handoffs:**
 - #16 - confidence-score garbage-line filter, unblocked, not picked up yet
 - #23 - 5.jpg multi-line header + Tax(%) format, deferred
 - #34 - labeled `is_food` sample, not started — needed for real is_food accuracy measurement and the Pakola follow-up
-- #48 - Stage 3 reasoning-loop gap on severely corrupted OCR — still flagged as "likely improved by #50's prompt rewrite, not formally confirmed." Not rechecked this session either.
-- #52 - Stage 2 fail-safe not firing on empty-content classification (`is_food=True` instead of `UNKNOWN`). Confirmed filed and open (was at risk of being lost last handoff). **Not yet investigated** — still needs a read of `extractor.py`'s `_parse_batch_response()` before any fix is proposed.
+- #48 - Stage 3 reasoning-loop gap on severely corrupted OCR — still flagged as "likely improved by #50's prompt rewrite, not formally confirmed." Not rechecked this session.
 
 **Open, from the earlier-filed set, status:**
-- #30 - DB migration: add `brand` column - still not run
-- #31 - Update Pydantic schemas (`brand`, `is_food` in `/receipts/upload` response) - still not done
+- #30 - DB migration: add `brand` column - still not run. **Next up.**
+- #31 - Update Pydantic schemas (`brand`, `is_food` in `/receipts/upload` response) - still not done. **Next up.**
 - #32 - Real end-to-end validation - 2 of 4 real receipts tested (2.jpg, 3.jpg). 1.jpg, 4.jpg still not run. Closed as complete per PRD's stated acceptance criteria; this gap is a documented known limitation, not a reason it was reopened.
 
 ---
 
 ## Immediate next steps (in order)
 
-1. **#52** — read `extractor.py`'s `_parse_batch_response()`, confirm or rule out the suspected cause (array-shape validated but not per-item content), fix if confirmed. Small, well-scoped, already flagged twice now as the right next move.
-2. **#30 + #31** — DB migration + Pydantic schema updates so Stage 2's real output (brand, unit, is_food) can actually be persisted. Nothing downstream of the ML pipeline stores this yet.
-3. **Build the labeled eval set (#34)** — blocks both real is_food accuracy measurement and the Pakola brand-resolution follow-up. Do this once #30/#31 give a real place to pull persisted examples from, rather than hand-collecting from logs again.
-4. **1.jpg/4.jpg** — cheap, closes out #32's one remaining known gap.
-5. #23/#48/#16 remain deferred, low priority, unchanged.
+1. **#30 + #31** — DB migration (`brand` column on `inventory_items`) + Pydantic schema updates (`brand`, `is_food` in the upload response) so Stage 2's real output can actually be persisted and returned via the API. Nothing downstream of the ML pipeline stores this yet — this is now the main blocker, everything else (eval sets, further tuning) is easier once real data exists to pull from.
+2. **Build the labeled eval set (#34)** — blocks real is_food accuracy measurement and the Pakola brand-resolution follow-up. Do this once #30/#31 give a real persisted-data source, rather than hand-collecting from logs again.
+3. **1.jpg/4.jpg** — cheap, closes out #32's one remaining known gap.
+4. #23/#48/#16 remain deferred, low priority, unchanged.
 
 ---
 
 ## Key decisions made this session (context for future reference, not to be re-litigated without new evidence)
 
-- **Diffs abandoned for doc updates, back to full files.** Tried unified-diff patches for `Item_Extraction.md`/`Normalization.md` to save tokens; `git apply` failed on malformed hunk headers (hand-written line-count math, error-prone). Full files are the reliable path — see "Writing style" above, updated to reflect this.
-- **Full-file rewrite justified for README.md specifically**, as an exception to the surgical-edit default — the drift was structural (an entire status table wrong), not a few stale lines a patch could fix cleanly.
-- **#50's writeup deliberately kept example-free in the failure-mechanism description** (per explicit instruction) — describes the reasoning-loop pattern generically so it's understandable without prior session context, rather than naming the specific items that triggered it.
-- **Latency benchmark excludes rate-limited runs from stats rather than averaging them in** — retry-backoff time is not pipeline latency, and blending it in would understate how much of "slowness" is actually Groq TPM contention vs. real compute cost.
+- **#52 closed without a code change.** Verified via manual trace + 15 regression tests that current `_parse_batch_response`/`classify_is_food_batch` already fail safe correctly on every documented malformed/empty/truncated shape. Root cause of the *original* report was not identified (no historical diff reviewed) — explicitly documented as unconfirmed rather than invented, per this project's "distinguish facts from speculation" rule. The regression suite is the durable outcome, not a fix.
+- **Mocking `_call_groq_batch` for tests, not a real API call.** Keeps the regression suite fast (0.13s for 15 tests), free, and independent of Groq rate limits — appropriate here since the thing under test is pure parsing/control-flow logic, not model behavior.
 
 Carried from prior sessions, still valid: Stage 2's `food_classifier.py` model is Groq `openai/gpt-oss-20b`; Stage 3/4 interface is `normalize_entity(item_name, quantity, unit, db)`; frozen-signal category check runs on raw unstripped `item_name`; doc renames (`Normalization.md`/`Expiry.md`); test-fixture errors documented as such, not silently patched.
