@@ -314,3 +314,6 @@ The goal is not to attach an AI model to an inventory app. The goal is to build 
 ## License
 
 See the repository for licensing information.
+
+
+<img src="assets/diagram.png" alt="Pipeline" width="800" />

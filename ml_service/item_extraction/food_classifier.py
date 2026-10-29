@@ -6,12 +6,8 @@ consumption? Replaces the old #18 scope (NOT_FOOD gate inside Stage 3's
 LLM fallback) - this decision now belongs here, before Normalization
 and Expiry ever run.
 
-Design (locked, see Item_Extraction.md / chat record):
-  - Model: Groq `openai/gpt-oss-20b`. Selected after testing 4 candidates
-    (Groq, Gemini, 2x OpenRouter free) against a 15-item hand-labeled
-    sample - only candidate with 15/15 valid JSON + 15/15 correct, no
-    rate-limit or reliability issues. See Item_Extraction.md for full
-    comparison table.
+Design:
+  - Model: Groq `openai/gpt-oss-20b`.
   - Prompt: strict JSON-only output, binary + confidence score, 3
     few-shot examples anchoring format. The prompt instructs no
     reasoning in the output - Groq's gpt-oss models still produce a
