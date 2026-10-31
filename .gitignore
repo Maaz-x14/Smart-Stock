@@ -31,8 +31,8 @@ develop-eggs/
 dist/
 downloads/
 .installed.cfg
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
