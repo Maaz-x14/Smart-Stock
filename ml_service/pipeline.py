@@ -58,17 +58,18 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from ml_service.expiry.predictor import predict_expiry
+from ml_service.item_extraction.extractor import ItemFields, extract_item_fields_batch
+from ml_service.normalization.normalizer import normalize_entity
 from ml_service.ocr.model import run_ocr
 from ml_service.ocr.row_reconstruction import reconstruct_rows
 from ml_service.parsing.row_parser import parse_receipt_rows
-from ml_service.item_extraction.extractor import extract_item_fields_batch, ItemFields
-from ml_service.normalization.normalizer import normalize_entity
-from ml_service.expiry.predictor import predict_expiry
 
 logger = logging.getLogger(__name__)
 
 
 # -- Typed exceptions: stages where failure means the pipeline cannot continue --
+
 
 class PipelineError(Exception):
     """Base class for pipeline-fatal stage failures. The FastAPI route
@@ -89,6 +90,7 @@ class RowParserError(PipelineError):
 
 
 # -- Final per-item output shape --
+
 
 @dataclass
 class ExtractedItem:
@@ -177,14 +179,6 @@ async def process_receipt(
 
     logger.debug(f"Stage 1.5 Row Reconstruction: {len(rows)} rows")
 
-    # TEMP DEBUG (Issue #49) - dump each row's text + y-coordinate to
-    # tell apart a genuine duplicate receipt line from a Row
-    # Reconstruction clustering bug splitting one line into two rows.
-    # Remove once #49's duplicate-row root cause is confirmed/fixed.
-    for i, row in enumerate(rows):
-        row_dump = " | ".join(f"{it['text']!r}@y={it['y']:.1f}" for it in row)
-        logger.debug(f"  row[{i}]: {row_dump}")
-
     # -- Stage 1.6 (Prefilter, runs internally) + Stage 1.7 (Row Parser) --
     try:
         parsed_items = await asyncio.to_thread(parse_receipt_rows, rows)
@@ -209,7 +203,7 @@ async def process_receipt(
     # -- Stage 3 + 4: Normalization + Expiry, gated on is_food --
     results: list[ExtractedItem] = []
 
-    for parsed, fields in zip(parsed_items, fields_list):
+    for parsed, fields in zip(parsed_items, fields_list, strict=False):
         raw_token = parsed["item_name"] or ""
 
         # is_food gating: None (unknown) is treated identically to
@@ -238,9 +232,7 @@ async def process_receipt(
         )
 
         try:
-            expiry = await asyncio.to_thread(
-                predict_expiry, normalized, purchase_date, db, storage_context
-            )
+            expiry = await asyncio.to_thread(predict_expiry, normalized, purchase_date, db, storage_context)
         except Exception as e:
             logger.error(f"Stage 4 Expiry Prediction raised for '{normalized.canonical_name}': {e}")
             expiry = None
@@ -248,20 +240,22 @@ async def process_receipt(
         if expiry is None:
             # Normalized but no expiry - item is still food, still
             # keep everything Stage 3 resolved.
-            results.append(ExtractedItem(
-                raw_token=raw_token,
-                canonical_name=normalized.canonical_name,
-                brand=fields.brand,
-                is_food=True,
-                quantity=normalized.quantity,
-                unit=normalized.unit,
-                category=normalized.category,
-                predicted_expiry_date=None,
-                shelf_life_days=None,
-                confidence=None,
-                storage_context=None,
-                normalization_pass=normalized.normalization_pass,
-            ))
+            results.append(
+                ExtractedItem(
+                    raw_token=raw_token,
+                    canonical_name=normalized.canonical_name,
+                    brand=fields.brand,
+                    is_food=True,
+                    quantity=normalized.quantity,
+                    unit=normalized.unit,
+                    category=normalized.category,
+                    predicted_expiry_date=None,
+                    shelf_life_days=None,
+                    confidence=None,
+                    storage_context=None,
+                    normalization_pass=normalized.normalization_pass,
+                )
+            )
             continue
 
         logger.debug(
@@ -269,19 +263,21 @@ async def process_receipt(
             f"confidence={expiry.confidence} source={expiry.source}"
         )
 
-        results.append(ExtractedItem(
-            raw_token=raw_token,
-            canonical_name=normalized.canonical_name,
-            brand=fields.brand,
-            is_food=True,
-            quantity=normalized.quantity,
-            unit=normalized.unit,
-            category=normalized.category,
-            predicted_expiry_date=expiry.predicted_expiry,
-            shelf_life_days=expiry.shelf_life_days,
-            confidence=expiry.confidence,
-            storage_context=expiry.storage_context,
-            normalization_pass=normalized.normalization_pass,
-        ))
+        results.append(
+            ExtractedItem(
+                raw_token=raw_token,
+                canonical_name=normalized.canonical_name,
+                brand=fields.brand,
+                is_food=True,
+                quantity=normalized.quantity,
+                unit=normalized.unit,
+                category=normalized.category,
+                predicted_expiry_date=expiry.predicted_expiry,
+                shelf_life_days=expiry.shelf_life_days,
+                confidence=expiry.confidence,
+                storage_context=expiry.storage_context,
+                normalization_pass=normalized.normalization_pass,
+            )
+        )
 
     return results

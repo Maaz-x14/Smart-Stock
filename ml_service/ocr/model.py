@@ -10,20 +10,27 @@ Ported from nb_paddleocr.ipynb (Cell 2) - logic unchanged, wrapped as
 a lazy-loaded singleton for pipeline use.
 """
 
-from paddleocr import PaddleOCR
-
 _ocr = None
 
 
-def _get_ocr() -> PaddleOCR:
-    """Lazy-loaded singleton - avoid reloading model weights per call."""
+def _get_ocr():
+    """Lazy-loaded singleton - avoid reloading model weights per call.
+
+    The PaddleOCR import itself lives in here, not at module level, so
+    that importing this module (and anything that imports it, i.e. the
+    whole pipeline chain) never requires paddleocr/paddlepaddle to be
+    installed. This is what lets CI run with requirements-ci.txt (no
+    Paddle) and mock run_ocr() instead of loading real model weights.
+    """
     global _ocr
     if _ocr is None:
+        from paddleocr import PaddleOCR
+
         _ocr = PaddleOCR(
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
-            device='cpu',
+            device="cpu",
             text_detection_model_name="PP-OCRv6_small_det",
             text_recognition_model_name="PP-OCRv6_small_rec",
         )
