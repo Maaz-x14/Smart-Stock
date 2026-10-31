@@ -1,8 +1,17 @@
 # test_pipeline_local.py
+#
+# Usage: run as a module from the repo root, not `python
+# scripts/test_pipeline_local.py` directly - it imports `app.*`, which
+# needs the repo root on sys.path: python -m scripts.test_pipeline_local
+#
+# Also see HANDOFF.md / eval.yml's header comment: IMAGE_PATHS below
+# is hardcoded to this project's original author's own local machine
+# and the images it points to are not in this repo (removed for
+# privacy). Point it at your own receipt images to use this locally.
 import asyncio
 import time
 from datetime import date
-from app.db import SessionLocal  # adjust to your actual session factory
+from app.db import get_session_factory
 from ml_service.ocr.model import _get_ocr  # warm-up only, see main()
 from ml_service.pipeline import process_receipt
 import logging
@@ -28,7 +37,7 @@ async def main():
     print("Warming up OCR model...")
     _get_ocr()
 
-    db = SessionLocal()
+    db = get_session_factory()()
     try:
         for path in IMAGE_PATHS:
             print(f"\n=== {path} ===")

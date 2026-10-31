@@ -12,6 +12,11 @@
 # matches real usage (repeat items across receipts hit cache). Each
 # rep's report includes a cache-hit flag so this is visible, not hidden.
 # Pass `--clear-cache` to instead get cold-cache worst-case numbers.
+#
+# Usage: run as a module from the repo root, not `python
+# scripts/benchmark_latency.py` directly - it imports `app.*`, which
+# needs the repo root on sys.path:
+#   python -m scripts.benchmark_latency --images path/to/receipt.jpg
 
 import argparse
 import asyncio
@@ -25,7 +30,7 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 
-from app.db import SessionLocal
+from app.db import get_session_factory
 from ml_service.ocr.model import run_ocr, _get_ocr
 from ml_service.ocr.row_reconstruction import reconstruct_rows
 from ml_service.parsing.row_parser import parse_receipt_rows
@@ -193,7 +198,7 @@ async def main():
     print("Warming up OCR model (excluded from timed runs)...")
     _get_ocr()
 
-    db = SessionLocal()
+    db = get_session_factory()()
     all_results: list[RunResult] = []
     try:
         for path in args.images:

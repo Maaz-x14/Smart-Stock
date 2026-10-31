@@ -8,19 +8,23 @@ cache row is cleared - the LLM never gets re-invoked. This explains why
 'Everyday Instnt' -> 'Instant Noodles' persisted identically across three
 different Pass 3 prompt rewrites.
 
-Usage:
-    python check_cache.py check "EVERYDAY INSTNT"       # inspect one entry
-    python check_cache.py check-all                      # list all entries
-    python check_cache.py clear "EVERYDAY INSTNT"        # delete one entry
-    python check_cache.py clear-all                      # delete ALL entries (re-evaluate everything under new prompt)
+Usage (run as a module from the repo root, not `python scripts/check_cache.py`
+directly - it imports `app.*`, which needs the repo root on sys.path):
+    python -m scripts.check_cache check "EVERYDAY INSTNT"  # inspect one entry
+    python -m scripts.check_cache check-all                 # list all entries
+    python -m scripts.check_cache clear "EVERYDAY INSTNT"    # delete one entry
+    python -m scripts.check_cache clear-all  # delete ALL entries (re-evaluate everything under new prompt)
 
 Note: raw_token is stored .upper() (see llm_fallback.py's _cache_lookup/
 _cache_store), so lookups here also upper-case the input for a match.
 """
 
 import sys
-from app.db import SessionLocal
+
+from app.db import get_session_factory
 from app.models import NormalizationCache
+
+SessionLocal = get_session_factory()
 
 
 def check(token: str):
