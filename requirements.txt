@@ -1,15 +1,31 @@
-alembic==1.16.5
-httpx==0.28.1
+# Runtime dependencies for the full app (API + ML pipeline).
+# CI uses requirements-ci.txt instead (no PaddleOCR/PaddlePaddle - see that
+# file's header). Install order matters for paddlepaddle on some platforms;
+# pip resolves it fine here since we pin exact versions.
+
+# -- ML pipeline --
 numpy>=2.1.0,<2.3.0
-openai==3.6.0
 opencv-python==4.12.0.88
 paddleocr==3.7.0
 paddlepaddle==3.2.0
 Pillow==11.3.0
-psycopg2-binary==2.9.12
-pydantic==2.13.5
-python-dotenv==1.2.3
 rapidfuzz==3.14.5
+openai==3.6.0
+
+# -- Data / DB --
 SQLAlchemy==2.0.52
-torch==2.8.0
-transformers==4.55.4
+alembic==1.16.5
+psycopg2-binary==2.9.12
+
+# -- API --
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.13.5
+pydantic-settings==2.8.1
+email-validator==2.2.0
+python-multipart==0.0.20
+python-jose[cryptography]==3.4.0
+bcrypt==4.2.1
+httpx==0.28.1
+apscheduler==3.11.0
+python-dotenv==1.2.3

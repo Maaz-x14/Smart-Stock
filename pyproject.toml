@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+# migrations/versions: generated/alembic-authored, not hand-style-checked.
+# *.ipynb under ml_service: exploratory/archived training notebooks, not
+# production code - ruff's cell-scoping produces false-positive F811/F821
+# on notebook-local state (e.g. a variable from an earlier cell) anyway.
+# scripts/: one-off local-run harnesses (latency benchmark, cache CLI,
+# local pipeline smoke test) - not imported by the app, not covered by
+# tests, and not part of what CI gates. Pre-existing ml_service/*.py
+# (OCR, parsing, extraction, normalization, expiry - all written before
+# this app build) is intentionally NOT excluded: it's real production
+# code and should eventually be brought under this lint config, but
+# that's a separate cleanup pass, not something to do silently as part
+# of wiring up CI. See HANDOFF.md.
+exclude = ["migrations/versions", "**/*.ipynb", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# E501: line length, not worth hard-wrapping prose in docstrings.
+# B008: FastAPI's own idiom is Depends(...)/Query(...) as a parameter
+# default - that's how routes declare dependencies, not a bug.
+ignore = ["E501", "B008"]
