@@ -1,0 +1,130 @@
+/*
+  Design tokens, per the build plan's "Design direction" section.
+  Palette: Fridge light / Shelf glass / Compressor / Price tag accent,
+  plus the three urgency tiers. Urgency never relies on color alone -
+  every tier also carries a word and a shape (see UrgencyBadge).
+*/
+
+:root {
+  /* -- Palette -- */
+  --color-fridge-light: #eef2f1;
+  --color-shelf-glass: #ffffff;
+  --color-compressor: #12292d;
+  --color-price-tag: #f4d03f;
+
+  --color-fresh: #2d7a4f;
+  --color-soon: #a86a00;
+  --color-now: #bf2f1f;
+
+  --color-fresh-bg: #e7f3ec;
+  --color-soon-bg: #faf0db;
+  --color-now-bg: #fbe8e4;
+
+  --color-border: #d7dedc;
+  --color-text: var(--color-compressor);
+  --color-text-muted: #5b6c6a;
+  --color-focus-ring: var(--color-price-tag);
+
+  /* -- Type -- */
+  --font-display: "Familjen Grotesk", system-ui, sans-serif;
+  --font-body: "Public Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* -- Spacing / radius -- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
+  --shadow-card: 0 1px 2px rgba(18, 41, 45, 0.08);
+
+  --max-content-width: 1080px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-fridge-light: #0f1b1c;
+    --color-shelf-glass: #17282a;
+    --color-compressor: #eaf1ef;
+    --color-text: var(--color-compressor);
+    --color-text-muted: #9fb0ae;
+    --color-border: #28393a;
+
+    --color-fresh-bg: #142a1f;
+    --color-soon-bg: #2b2210;
+    --color-now-bg: #2c1714;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-fridge-light: #0f1b1c;
+  --color-shelf-glass: #17282a;
+  --color-compressor: #eaf1ef;
+  --color-text: var(--color-compressor);
+  --color-text-muted: #9fb0ae;
+  --color-border: #28393a;
+
+  --color-fresh-bg: #142a1f;
+  --color-soon-bg: #2b2210;
+  --color-now-bg: #2c1714;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-fridge-light);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

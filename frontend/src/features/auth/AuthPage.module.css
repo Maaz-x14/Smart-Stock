@@ -1,0 +1,58 @@
+.page {
+  max-width: 360px;
+  margin: var(--space-7) auto;
+  padding: 0 var(--space-4);
+}
+
+.page h1 {
+  font-size: 1.5rem;
+  margin-bottom: var(--space-5);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.875rem;
+}
+
+.form input {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-shelf-glass);
+  color: var(--color-text);
+}
+
+.form button {
+  min-height: 48px;
+  background: var(--color-compressor);
+  color: var(--color-fridge-light);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  margin-top: var(--space-2);
+}
+
+.form button:disabled {
+  opacity: 0.6;
+}
+
+.error {
+  color: var(--color-now);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.switchLink {
+  margin-top: var(--space-5);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}

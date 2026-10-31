@@ -1,0 +1,144 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 27, 28, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 100;
+}
+
+.dialog {
+  background: var(--color-shelf-glass);
+  border-radius: var(--radius-md);
+  width: min(560px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(15, 27, 28, 0.25);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.header h2 {
+  font-size: 1.25rem;
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.rowLabel input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: var(--color-price-tag);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  font-weight: 500;
+}
+
+.flag {
+  font-size: 0.8125rem;
+  color: var(--color-soon);
+}
+
+.rowMeta {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  padding-top: var(--space-1);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.cancelButton,
+.confirmButton {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.cancelButton {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.confirmButton {
+  background: var(--color-compressor);
+  border: 1px solid var(--color-compressor);
+  color: var(--color-fridge-light);
+}
+
+.confirmButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+  }
+}

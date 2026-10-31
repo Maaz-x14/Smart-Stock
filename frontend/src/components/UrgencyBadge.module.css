@@ -1,0 +1,31 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.shape {
+  font-size: 0.6rem;
+}
+
+.green {
+  color: var(--color-fresh);
+  background: var(--color-fresh-bg);
+}
+
+.yellow {
+  color: var(--color-soon);
+  background: var(--color-soon-bg);
+}
+
+.red,
+.expired {
+  color: var(--color-now);
+  background: var(--color-now-bg);
+}

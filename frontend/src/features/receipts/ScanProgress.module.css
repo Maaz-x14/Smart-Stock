@@ -1,0 +1,55 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-4);
+}
+
+.stages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 220px;
+}
+
+.stageRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.marker {
+  width: 1.2em;
+  font-family: var(--font-mono);
+  color: var(--color-price-tag);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+}
+
+.activeLabel {
+  color: var(--color-text);
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.receiptStrip {
+  width: 56px;
+  height: 80px;
+  background: var(--color-shelf-glass);
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--color-border) 0,
+    var(--color-border) 2px,
+    transparent 2px,
+    transparent 10px
+  );
+  background-position: 8px 10px;
+  background-size: 40px 10px;
+  background-repeat: repeat-y;
+}

@@ -1,0 +1,119 @@
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--color-shelf-glass);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5) var(--space-4);
+  gap: var(--space-5);
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.navList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.navLink,
+.navLinkActive {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+
+.navLinkActive {
+  background: var(--color-fridge-light);
+  font-weight: 600;
+}
+
+.addButton {
+  margin-top: auto;
+  text-align: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-price-tag);
+  color: var(--color-compressor);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.logoutButton {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  min-height: 40px;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.content {
+  min-width: 0;
+}
+
+.bottomBar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .content {
+    padding-bottom: 64px;
+  }
+
+  .bottomBar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--color-shelf-glass);
+    border-top: 1px solid var(--color-border);
+    justify-content: space-around;
+  }
+
+  .bottomLink,
+  .bottomLinkActive {
+    flex: 1;
+    text-align: center;
+    padding: var(--space-2) 0;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bottomLinkActive {
+    color: var(--color-compressor);
+    font-weight: 600;
+  }
+}
