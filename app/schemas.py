@@ -10,7 +10,8 @@
 # are out of scope here - separate issues, not touched.
 
 from datetime import date
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ExtractedItem(BaseModel):
@@ -29,24 +30,43 @@ class ExtractedItem(BaseModel):
 
     # Stage 2 output (extractor.py's ItemFields) - always present,
     # regardless of is_food outcome.
-    brand: str | None = Field(None, description="Fuzzy-matched brand, or None if no lexicon match (a valid outcome, not a failure).")
+    brand: str | None = Field(
+        None, description="Fuzzy-matched brand, or None if no lexicon match (a valid outcome, not a failure)."
+    )
     is_food: bool | None = Field(
         ...,
         description="Stage 2's food gate. None means UNKNOWN (API failure or malformed LLM response) - "
-                    "callers must treat this identically to False, per API_Spec.md §2.",
+        "callers must treat this identically to False, per API_Spec.md §2.",
     )
-    unit: str | None = Field(None, description="Regex-extracted unit from item_name (Stage 2), independent of is_food.")
+    unit: str | None = Field(
+        None, description="Regex-extracted unit from item_name (Stage 2), independent of is_food."
+    )
 
     # Stage 3/4 output - only populated when is_food resolved True.
     # None across the board otherwise, per API_Spec.md's documented
     # non-food example - this is not "missing data", it's "did not run".
-    canonical_name: str | None = Field(None, description="Stage 3 normalized name. None if is_food is not True.")
+    canonical_name: str | None = Field(
+        None, description="Stage 3 normalized name. None if is_food is not True."
+    )
     quantity: float | None = Field(None, description="Quantity from Row Parser. None if is_food is not True.")
-    category: str | None = Field(None, description="Stage 3 category assignment. None if is_food is not True.")
-    predicted_expiry_date: date | None = Field(None, description="Stage 4 output. None if is_food is not True.")
+    category: str | None = Field(
+        None, description="Stage 3 category assignment. None if is_food is not True."
+    )
+    predicted_expiry_date: date | None = Field(
+        None, description="Stage 4 output. None if is_food is not True."
+    )
     shelf_life_days: int | None = Field(None, description="Stage 4 output. None if is_food is not True.")
-    confidence: float | None = Field(None, ge=0.0, le=1.0, description="Stage 3 normalization confidence. None if is_food is not True.")
-    storage_context: str | None = Field(None, description="Echoes the request's storage_context. None if is_food is not True.")
+    confidence: float | None = Field(
+        None, ge=0.0, le=1.0, description="Stage 3 normalization confidence. None if is_food is not True."
+    )
+    storage_context: str | None = Field(
+        None, description="Echoes the request's storage_context. None if is_food is not True."
+    )
+    normalization_pass: int | None = Field(
+        None,
+        description="Which Stage 3 pass resolved canonical_name (1=exact/DB, 2=fuzzy, 3=LLM fallback). "
+        "None if is_food is not True, or Stage 3 could not resolve a name.",
+    )
 
     @model_validator(mode="after")
     def _downstream_fields_only_when_food(self) -> "ExtractedItem":
@@ -64,6 +84,7 @@ class ExtractedItem(BaseModel):
                 "shelf_life_days": self.shelf_life_days,
                 "confidence": self.confidence,
                 "storage_context": self.storage_context,
+                "normalization_pass": self.normalization_pass,
             }
             populated = [k for k, v in downstream.items() if v is not None]
             if populated:
@@ -82,4 +103,7 @@ class ReceiptUploadResponse(BaseModel):
     receipt_id: str
     extracted_items: list[ExtractedItem]
     total_items_extracted: int = Field(..., description="len(extracted_items) - includes non-food items.")
-    processing_time_ms: int = Field(..., description="Wall-clock pipeline latency for this receipt. See ML_Pipeline.md §9 for aggregate benchmarks.")
+    processing_time_ms: int = Field(
+        ...,
+        description="Wall-clock pipeline latency for this receipt. See ML_Pipeline.md §9 for aggregate benchmarks.",
+    )
