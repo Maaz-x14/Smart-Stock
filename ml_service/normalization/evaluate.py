@@ -12,17 +12,19 @@ REWRITTEN:
 """
 
 import json
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from ml_service.normalization.normalizer import normalize_entity
 
 _DATA_PATH = Path(__file__).parent / "data" / "eval_test_cases.json"
 
 
 def _load_test_cases() -> list[tuple[str, str]]:
-    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+    with open(_DATA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     return [(c["item_name"], c["expected"]) for c in data["cases"]]
 
@@ -32,21 +34,21 @@ TEST_CASES = _load_test_cases()
 
 @dataclass
 class EvalResult:
-    total:        int
-    pass1_hits:   int
-    pass2_hits:   int
-    pass3_hits:   int
-    failures:     int
-    correct:      int
-    accuracy:     float
+    total: int
+    pass1_hits: int
+    pass2_hits: int
+    pass3_hits: int
+    failures: int
+    correct: int
+    accuracy: float
     llm_fallback_rate: float
     canonical_match_rate: float
 
 
 def run_evaluation(db_url: str) -> EvalResult:
-    engine  = create_engine(db_url)
+    engine = create_engine(db_url)
     Session = sessionmaker(bind=engine)
-    db      = Session()
+    db = Session()
 
     pass1 = pass2 = pass3 = failures = correct = 0
 
@@ -73,7 +75,9 @@ def run_evaluation(db_url: str) -> EvalResult:
             pass3 += 1
 
         status = "PASS" if match else "FAIL"
-        print(f"  {status} Pass {item.normalization_pass} | {item_name:30s} -> {item.canonical_name:25s} (expected: {expected}) | category={item.category}")
+        print(
+            f"  {status} Pass {item.normalization_pass} | {item_name:30s} -> {item.canonical_name:25s} (expected: {expected}) | category={item.category}"
+        )
 
     total = len(TEST_CASES)
     return EvalResult(
@@ -91,13 +95,14 @@ def run_evaluation(db_url: str) -> EvalResult:
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
+
     load_dotenv()
 
     import os
 
     result = run_evaluation(os.environ["DATABASE_URL"])
 
-    print(f"\n{'-'*50}")
+    print(f"\n{'-' * 50}")
     print(f"Total:               {result.total}")
     print(f"Pass 1 (map):        {result.pass1_hits}")
     print(f"Pass 2 (fuzzy):      {result.pass2_hits}")

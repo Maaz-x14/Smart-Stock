@@ -37,7 +37,7 @@ _MAX_SCAN_WINDOW = 2
 
 
 def _load_map() -> dict[str, str]:
-    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+    with open(_DATA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     return data["map"]
 
@@ -56,7 +56,7 @@ def _token_scan(cleaned_token: str) -> str | None:
 
     for start in range(len(words)):
         for window in range(min(_MAX_SCAN_WINDOW, len(words) - start), 0, -1):
-            candidate = " ".join(words[start:start + window])
+            candidate = " ".join(words[start : start + window])
             result = ABBREVIATION_MAP.get(candidate)
             if result:
                 return result

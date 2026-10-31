@@ -10,9 +10,9 @@ already sound; this file's only real problem was the inline data.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 from statistics import median
 
 from sqlalchemy.orm import Session
@@ -20,41 +20,42 @@ from sqlalchemy.orm import Session
 from app.models import ShelfLifeReference
 from ml_service.normalization.normalizer import NormalizedItem
 
-
 # -- Data --------------------------------------------------------------------
 
 _DATA_PATH = Path(__file__).parent / "data" / "category_default_storage.json"
 
 
 def _load_category_default_storage() -> dict[str, str]:
-    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+    with open(_DATA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     return data["map"]
 
 
 CATEGORY_DEFAULT_STORAGE: dict[str, str] = _load_category_default_storage()
 
-BASE_CONFIDENCE_EXACT    = 0.95
+BASE_CONFIDENCE_EXACT = 0.95
 BASE_CONFIDENCE_CATEGORY = 0.70
-BASE_CONFIDENCE_DEFAULT  = 0.40
+BASE_CONFIDENCE_DEFAULT = 0.40
 
-DEFAULT_SHELF_LIFE_DAYS  = 7   # hard fallback when shelf_life_reference has no data at all
-REVIEW_THRESHOLD         = 0.60  # below this, flag_for_review = True
+DEFAULT_SHELF_LIFE_DAYS = 7  # hard fallback when shelf_life_reference has no data at all
+REVIEW_THRESHOLD = 0.60  # below this, flag_for_review = True
 
 
 # -- Output dataclass ---------------------------------------------------------
 
+
 @dataclass
 class ExpiryPrediction:
-    predicted_expiry:  date
-    shelf_life_days:   int
-    confidence:        float
-    source:            str   # "exact_match" | "category_fallback" | "hard_default"
-    storage_context:   str
-    flag_for_review:   bool
+    predicted_expiry: date
+    shelf_life_days: int
+    confidence: float
+    source: str  # "exact_match" | "category_fallback" | "hard_default"
+    storage_context: str
+    flag_for_review: bool
 
 
 # -- Internal helpers ----------------------------------------------------------
+
 
 def _resolve_storage_context(item: NormalizedItem, storage_context: str | None) -> str:
     """Use user-provided storage context if given; otherwise default by category."""
@@ -93,10 +94,11 @@ def _level2_category(category: str, storage_context: str, db: Session) -> int | 
 
 # -- Public API -----------------------------------------------------------------
 
+
 def predict_expiry(
-    item:            NormalizedItem,
-    purchase_date:   date,
-    db:              Session,
+    item: NormalizedItem,
+    purchase_date: date,
+    db: Session,
     storage_context: str | None = None,
 ) -> ExpiryPrediction:
     """
@@ -137,7 +139,7 @@ def predict_expiry(
     # -- Final confidence + expiry --
     final_confidence = round(base_confidence * item.confidence, 4)
     predicted_expiry = purchase_date + timedelta(days=shelf_life_days)
-    flag_for_review  = final_confidence < REVIEW_THRESHOLD
+    flag_for_review = final_confidence < REVIEW_THRESHOLD
 
     return ExpiryPrediction(
         predicted_expiry=predicted_expiry,

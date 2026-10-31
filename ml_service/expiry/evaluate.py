@@ -16,13 +16,13 @@ REWRITTEN (Maaz, this session):
 """
 
 import json
-from pathlib import Path
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
-from app.db import SessionLocal
+from app.db import get_session_factory
+from ml_service.expiry.predictor import predict_expiry
 from ml_service.normalization.normalizer import normalize_entity
-from ml_service.expiry.predictor import predict_expiry, REVIEW_THRESHOLD
 
 _DATA_PATH = Path(__file__).parent / "data" / "expiry_eval_test_cases.json"
 
@@ -30,7 +30,7 @@ TOLERANCE_DAYS = 2  # within +-2 days of expected = correct
 
 
 def _load_test_cases() -> list[tuple[str, str | None, int]]:
-    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+    with open(_DATA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     return [(c["item_name"], c["storage_context"], c["expected_days"]) for c in data["cases"]]
 
@@ -40,19 +40,19 @@ TEST_CASES = _load_test_cases()
 
 @dataclass
 class EvalResult:
-    total:              int
+    total: int
     normalization_fails: int  # NEW: cases where Stage 3 itself failed to resolve
-    exact_match_hits:   int
-    category_hits:      int
-    default_hits:       int
-    correct:            int
-    accuracy:           float
-    avg_confidence:     float
-    flagged_count:      int
+    exact_match_hits: int
+    category_hits: int
+    default_hits: int
+    correct: int
+    accuracy: float
+    avg_confidence: float
+    flagged_count: int
 
 
 def run_evaluation() -> EvalResult:
-    db = SessionLocal()
+    db = get_session_factory()()
 
     exact_hits = cat_hits = default_hits = correct = normalization_fails = 0
     confidences = []
@@ -94,8 +94,7 @@ def run_evaluation() -> EvalResult:
             f"storage={result.storage_context:7s} | "
             f"predicted={result.shelf_life_days:4d}d | "
             f"expected~{expected_days:4d}d | "
-            f"conf={result.confidence:.3f}"
-            + (" [REVIEW]" if result.flag_for_review else "")
+            f"conf={result.confidence:.3f}" + (" [REVIEW]" if result.flag_for_review else "")
         )
 
     db.close()

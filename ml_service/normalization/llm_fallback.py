@@ -63,12 +63,14 @@ unchanged in case it recurs.
 
 import os
 import re
+
 import httpx
 from sqlalchemy.orm import Session
+
 from app.models import NormalizationCache
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL   = "openai/gpt-oss-20b"
+GROQ_MODEL = "openai/gpt-oss-20b"
 LLM_CONFIDENCE = 0.70
 
 PROMPT_TEMPLATE = """Receipt line item: '{raw_token}'
@@ -91,6 +93,7 @@ Examples:
 'Kimtiaz' -> UNKNOWN
 
 Now resolve: '{raw_token}'"""
+
 
 def _cache_lookup(raw_token: str, db: Session) -> str | None:
     """Return cached canonical name for raw_token, or None if not cached."""
@@ -120,7 +123,7 @@ def _clean_llm_response(response_text: str) -> str:
     """
     text = response_text.strip()
     text = text.split("\n")[0].strip()
-    text = re.sub(r'^["\']|["\']$', '', text).strip()
+    text = re.sub(r'^["\']|["\']$', "", text).strip()
     text = text.rstrip(".,;:")
     return text.title()
 
@@ -139,7 +142,7 @@ def pass3_llm(raw_token: str, db: Session) -> tuple[str | None, float]:
 
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        raise EnvironmentError("GROQ_API_KEY environment variable not set")
+        raise OSError("GROQ_API_KEY environment variable not set")
 
     prompt = PROMPT_TEMPLATE.format(raw_token=raw_token)
 

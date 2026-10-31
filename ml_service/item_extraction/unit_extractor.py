@@ -25,13 +25,33 @@ from dataclasses import dataclass
 # --- Canonical unit vocabulary -------------------------------------------
 # category -> canonical unit -> set of accepted surface forms (incl. corruption)
 _CANONICAL_UNITS = {
-    "kg": {"kg", "kgs", "kg.", "k9", "kq", "kqs", "kq.", "k9", "k9s", "k9."},          # k9/kq: g->9/q visual noise (speculative)
-    "g":  {"g", "gm", "gms", "grams", "gram", "9m", "9ms", "9rams", "9ram"},   # "9" for lone g (speculative, risky - see note)
-    "lb": {"lb", "lbs", "1b", "1bs", "ib", "ibs"},                  # l->1/i (speculative)
-    "oz": {"oz", "0z", "o2", "02"},                               # o->0
-    "l":  {"l", "ltr", "ltrs", "liter", "litre"},# l->1 (HIGH collision risk, see note)
-    "ml": {"ml", "m1", "mI"},                         # l->1/I (documented in HANDOFF)
-    "gal": {"gal", "gallon", "9al", "9allon"},                  # g->9
+    "kg": {
+        "kg",
+        "kgs",
+        "kg.",
+        "k9",
+        "kq",
+        "kqs",
+        "kq.",
+        "k9s",
+        "k9.",
+    },  # k9/kq: g->9/q visual noise (speculative)
+    "g": {
+        "g",
+        "gm",
+        "gms",
+        "grams",
+        "gram",
+        "9m",
+        "9ms",
+        "9rams",
+        "9ram",
+    },  # "9" for lone g (speculative, risky - see note)
+    "lb": {"lb", "lbs", "1b", "1bs", "ib", "ibs"},  # l->1/i (speculative)
+    "oz": {"oz", "0z", "o2", "02"},  # o->0
+    "l": {"l", "ltr", "ltrs", "liter", "litre"},  # l->1 (HIGH collision risk, see note)
+    "ml": {"ml", "m1", "mI"},  # l->1/I (documented in HANDOFF)
+    "gal": {"gal", "gallon", "9al", "9allon"},  # g->9
     "pcs": {"pcs", "pc", "pieces", "piece", "pc's", "pcs."},
     "dozen": {"dozen", "dz", "doz"},
     "pack": {"pack", "pkt", "packet", "pk"},
@@ -39,11 +59,7 @@ _CANONICAL_UNITS = {
 }
 
 # Reverse lookup: surface form -> canonical unit
-_SURFACE_TO_CANONICAL = {
-    form.lower(): canon
-    for canon, forms in _CANONICAL_UNITS.items()
-    for form in forms
-}
+_SURFACE_TO_CANONICAL = {form.lower(): canon for canon, forms in _CANONICAL_UNITS.items() for form in forms}
 
 # Sort surface forms longest-first so e.g. "ltrs" matches before "l"
 _SURFACE_FORMS_SORTED = sorted(_SURFACE_TO_CANONICAL.keys(), key=len, reverse=True)
@@ -70,9 +86,9 @@ _FUSED_PATTERN = re.compile(
 
 @dataclass
 class UnitExtractionResult:
-    unit: str | None          # canonical unit, or None if no confident match
+    unit: str | None  # canonical unit, or None if no confident match
     matched_span: str | None  # original substring matched (for stripping/audit)
-    remaining_text: str       # item_name with matched span removed
+    remaining_text: str  # item_name with matched span removed
 
 
 def extract_unit(item_name: str) -> UnitExtractionResult:
@@ -98,7 +114,7 @@ def extract_unit(item_name: str) -> UnitExtractionResult:
         return UnitExtractionResult(unit=None, matched_span=None, remaining_text=item_name)
 
     matched_span = match.group(0)
-    remaining = (item_name[: match.start()] + item_name[match.end():]).strip()
+    remaining = (item_name[: match.start()] + item_name[match.end() :]).strip()
     remaining = re.sub(r"\s{2,}", " ", remaining)
 
     return UnitExtractionResult(

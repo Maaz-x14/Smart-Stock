@@ -24,29 +24,43 @@ if a unit string somehow survives into this input, that's a Stage 2
 bug to fix there, not something to silently re-strip here.
 """
 
-import re
-
 STRIP_PREFIXES = {
-    "ORG", "ORGC", "ORGANIC",
-    "FF",                          # Fat-free
-    "LF", "LOWFAT", "LO-FAT",     # Low-fat
-    "RF", "REDFAT",                # Reduced-fat
-    "WHL", "WHOLE",
-    "FRZN", "FRZ", "FZ",          # Frozen (keep if it disambiguates, e.g. "FZ CORN")
-    "GF",                          # Gluten-free
-    "NS", "NSA",                   # No-salt-added
-    "NF",                          # Non-fat
-    "LS",                          # Low-sodium
+    "ORG",
+    "ORGC",
+    "ORGANIC",
+    "FF",  # Fat-free
+    "LF",
+    "LOWFAT",
+    "LO-FAT",  # Low-fat
+    "RF",
+    "REDFAT",  # Reduced-fat
+    "WHL",
+    "WHOLE",
+    "FRZN",
+    "FRZ",
+    "FZ",  # Frozen (keep if it disambiguates, e.g. "FZ CORN")
+    "GF",  # Gluten-free
+    "NS",
+    "NSA",  # No-salt-added
+    "NF",  # Non-fat
+    "LS",  # Low-sodium
     "RAW",
     "FRESH",
-    "SMKD",                        # Smoked
-    "SLCD", "SLC",                 # Sliced
+    "SMKD",  # Smoked
+    "SLCD",
+    "SLC",  # Sliced
     "DICED",
-    "BNLS", "BNLESS",              # Boneless
-    "SKNLS",                       # Skinless
-    "LN", "LEAN",
-    "XL", "LG", "SM", "MED",      # Size modifiers
-    "PKG", "PCK",                  # Package (sometimes prefixed)
+    "BNLS",
+    "BNLESS",  # Boneless
+    "SKNLS",  # Skinless
+    "LN",
+    "LEAN",
+    "XL",
+    "LG",
+    "SM",
+    "MED",  # Size modifiers
+    "PKG",
+    "PCK",  # Package (sometimes prefixed)
 }
 
 

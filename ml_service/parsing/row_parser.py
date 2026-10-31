@@ -1,5 +1,7 @@
 import re
+
 from rapidfuzz import fuzz
+
 from ml_service.parsing.prefilter import should_drop_row
 
 COLUMN_SYNONYMS = {
@@ -54,6 +56,7 @@ def find_header_row(rows, max_scan=None):
 
     return best_row_idx, best_col_map
 
+
 def clean_numeric_string(text):
     t = text.strip()
 
@@ -87,9 +90,16 @@ def is_numeric(text):
 def to_number(text):
     return clean_numeric_string(text)
 
+
 def parse_row_with_header(row, col_map):
-    result = {"item_name": None, "quantity": None, "price": None,
-              "discount": None, "total": None, "low_confidence_parse": False}
+    result = {
+        "item_name": None,
+        "quantity": None,
+        "price": None,
+        "discount": None,
+        "total": None,
+        "low_confidence_parse": False,
+    }
     for item in row:
         nearest = min(col_map, key=lambda c: abs(c[0] - item["x"]))
         col_types = nearest[1]
@@ -127,8 +137,14 @@ def parse_row_with_header(row, col_map):
 
 
 def parse_row_without_header(row):
-    result = {"item_name": None, "quantity": None, "price": None,
-              "discount": None, "total": None, "low_confidence_parse": True}
+    result = {
+        "item_name": None,
+        "quantity": None,
+        "price": None,
+        "discount": None,
+        "total": None,
+        "low_confidence_parse": True,
+    }
 
     non_numeric = [i for i in row if not is_numeric(i["text"])]
     numeric = [i for i in row if is_numeric(i["text"])]

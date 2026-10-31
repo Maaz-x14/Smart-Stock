@@ -111,7 +111,7 @@ def parse_response(raw: str) -> dict | None:
             return None
         if not isinstance(data["is_food"], bool):
             return None
-        if not isinstance(data["confidence"], (int, float)):
+        if not isinstance(data["confidence"], int | float):
             return None
         if not (0.0 <= float(data["confidence"]) <= 1.0):
             return None
@@ -144,8 +144,10 @@ def run_candidate(name: str, call_fn) -> CandidateResult:
 
 # --- Provider call functions -------------------------------------------------
 
+
 def call_groq(item_name: str) -> str:
     from openai import OpenAI
+
     client = OpenAI(
         api_key=os.environ["GROQ_API_KEY"],
         base_url="https://api.groq.com/openai/v1",
@@ -164,6 +166,7 @@ def call_groq(item_name: str) -> str:
 
 def call_gemini(item_name: str) -> str:
     import google.generativeai as genai
+
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     model = genai.GenerativeModel(model_name, system_instruction=SYSTEM_PROMPT)
@@ -176,6 +179,7 @@ def call_gemini(item_name: str) -> str:
 
 def call_openrouter(item_name: str, model: str) -> str:
     from openai import OpenAI
+
     client = OpenAI(
         api_key=os.environ["OPENROUTER_API_KEY"],
         base_url="https://openrouter.ai/api/v1",
@@ -212,10 +216,12 @@ if __name__ == "__main__":
         if not model_list:
             print("Skipping OpenRouter - OPENROUTER_MODELS not set (comma-separated)")
         for model_id in model_list:
-            candidates.append((
-                f"OpenRouter: {model_id}",
-                lambda item_name, m=model_id: call_openrouter(item_name, m),
-            ))
+            candidates.append(
+                (
+                    f"OpenRouter: {model_id}",
+                    lambda item_name, m=model_id: call_openrouter(item_name, m),
+                )
+            )
     else:
         print("Skipping OpenRouter - OPENROUTER_API_KEY not set")
 

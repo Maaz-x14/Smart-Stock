@@ -36,13 +36,14 @@ import re
 from pathlib import Path
 
 from sqlalchemy.orm import Session
+
 from app.models import ShelfLifeReference
 
 _DATA_PATH = Path(__file__).parent / "data" / "category_keywords.json"
 
 
 def _load_data() -> tuple[list[str], dict[str, list[str]]]:
-    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+    with open(_DATA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     return data["frozen_signal_keywords"], data["categories"]
 

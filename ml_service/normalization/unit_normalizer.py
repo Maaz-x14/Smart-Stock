@@ -31,7 +31,7 @@ _DATA_PATH = Path(__file__).parent / "data" / "unit_map.json"
 
 
 def _load_map() -> dict[str, str]:
-    with open(_DATA_PATH, "r", encoding="utf-8") as f:
+    with open(_DATA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     return data["map"]
 

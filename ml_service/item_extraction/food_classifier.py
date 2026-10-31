@@ -43,7 +43,7 @@ Design:
   - Batch classification (Issue #46): classify_is_food() alone does
     ONE Groq call per item. At 15-20 items/receipt this blew through
     Groq free-tier TPM (8000/min) regardless of concurrency settings -
-    concurrency bounds parallel requests, not tokens/min. 
+    concurrency bounds parallel requests, not tokens/min.
     classify_is_food_batch() / classify_is_food_chunked() batch N items
     into one call (default chunk size 5, see Issue #46 decision - large
     enough to meaningfully cut call count, small enough to keep
@@ -57,6 +57,7 @@ import json
 import os
 from dataclasses import dataclass
 from enum import Enum
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -147,6 +148,7 @@ Output:
 A single JSON array only. No prose, no code fences, no trailing commentary.
 </output_format>"""
 
+
 class ClassificationOutcome(Enum):
     FOOD = "food"
     NOT_FOOD = "not_food"
@@ -159,8 +161,8 @@ class FoodClassificationResult:
     confidence: float | None  # None when outcome is UNKNOWN via failure
     raw_response: str | None = None  # kept for debugging/logging, not returned to API layer
     reasoning: str | None = None  # provider's reasoning trace, if exposed (e.g. Groq gpt-oss).
-                                    # Not parsed/relied on for the decision - content is the
-                                    # source of truth - but kept for debugging/audit.
+    # Not parsed/relied on for the decision - content is the
+    # source of truth - but kept for debugging/audit.
 
     @property
     def is_food(self) -> bool | None:
@@ -193,7 +195,7 @@ def _parse_response(raw: str) -> tuple[bool, float] | None:
             return None
         if not isinstance(data["is_food"], bool):
             return None
-        if not isinstance(data["confidence"], (int, float)):
+        if not isinstance(data["confidence"], int | float):
             return None
         confidence = float(data["confidence"])
         if not (0.0 <= confidence <= 1.0):
@@ -233,7 +235,7 @@ def _parse_batch_response(raw: str, expected_count: int) -> list[tuple[bool, flo
                 return None
             if not isinstance(entry["is_food"], bool):
                 return None
-            if not isinstance(entry["confidence"], (int, float)):
+            if not isinstance(entry["confidence"], int | float):
                 return None
             confidence = float(entry["confidence"])
             if not (0.0 <= confidence <= 1.0):
@@ -260,6 +262,7 @@ def _call_groq(item_name: str, model: str) -> tuple[str, str | None]:
     JSON. We don't parse it, but it's useful for debugging/logging
     (see module docstring)."""
     from openai import OpenAI
+
     client = OpenAI(
         api_key=os.getenv("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1",
@@ -300,11 +303,12 @@ def _call_groq_batch(item_names: list[str], model: str) -> tuple[str, str | None
     per item; reasoning_effort=low keeps the reasoning trace from
     eating the content budget (Issue #46, fix #2)."""
     from openai import OpenAI
+
     client = OpenAI(
         api_key=os.getenv("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1",
     )
-    numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(item_names))
+    numbered = "\n".join(f"{i + 1}. {name}" for i, name in enumerate(item_names))
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -360,16 +364,22 @@ def classify_is_food(item_name: str) -> FoodClassificationResult:
         raw, reasoning = call_fn(item_name, model)
     except Exception:
         # No retry (design decision) - any failure -> UNKNOWN immediately.
-        return FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None, raw_response=None)
+        return FoodClassificationResult(
+            outcome=ClassificationOutcome.UNKNOWN, confidence=None, raw_response=None
+        )
 
     parsed = _parse_response(raw)
     if parsed is None:
         # Malformed output - same UNKNOWN path as an API failure.
-        return FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None, raw_response=raw, reasoning=reasoning)
+        return FoodClassificationResult(
+            outcome=ClassificationOutcome.UNKNOWN, confidence=None, raw_response=raw, reasoning=reasoning
+        )
 
     is_food, confidence = parsed
     outcome = ClassificationOutcome.FOOD if is_food else ClassificationOutcome.NOT_FOOD
-    return FoodClassificationResult(outcome=outcome, confidence=confidence, raw_response=raw, reasoning=reasoning)
+    return FoodClassificationResult(
+        outcome=outcome, confidence=confidence, raw_response=raw, reasoning=reasoning
+    )
 
 
 def classify_is_food_batch(item_names: list[str]) -> list[FoodClassificationResult]:
@@ -398,29 +408,41 @@ def classify_is_food_batch(item_names: list[str]) -> list[FoodClassificationResu
 
     if provider_name != "groq":
         # Batch path only implemented for groq currently - fail safe.
-        return [FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None) for _ in item_names]
+        return [
+            FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None)
+            for _ in item_names
+        ]
 
     safe_names = [n.strip() if n and n.strip() else "(blank)" for n in item_names]
 
     try:
         raw, reasoning = _call_groq_batch(safe_names, model)
     except Exception:
-        return [FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None) for _ in item_names]
+        return [
+            FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None)
+            for _ in item_names
+        ]
 
     parsed = _parse_batch_response(raw, len(item_names))
     if parsed is None:
         return [
-            FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None, raw_response=raw, reasoning=reasoning)
+            FoodClassificationResult(
+                outcome=ClassificationOutcome.UNKNOWN, confidence=None, raw_response=raw, reasoning=reasoning
+            )
             for _ in item_names
         ]
 
     results = []
-    for original_name, (is_food, confidence) in zip(item_names, parsed):
+    for original_name, (is_food, confidence) in zip(item_names, parsed, strict=False):
         if not original_name or not original_name.strip():
             results.append(FoodClassificationResult(outcome=ClassificationOutcome.UNKNOWN, confidence=None))
             continue
         outcome = ClassificationOutcome.FOOD if is_food else ClassificationOutcome.NOT_FOOD
-        results.append(FoodClassificationResult(outcome=outcome, confidence=confidence, raw_response=raw, reasoning=reasoning))
+        results.append(
+            FoodClassificationResult(
+                outcome=outcome, confidence=confidence, raw_response=raw, reasoning=reasoning
+            )
+        )
     return results
 
 
@@ -440,7 +462,7 @@ def classify_is_food_chunked(item_names: list[str], batch_size: int = 5) -> list
         return []
     results: list[FoodClassificationResult] = []
     for start in range(0, len(item_names), batch_size):
-        chunk = item_names[start:start + batch_size]
+        chunk = item_names[start : start + batch_size]
         results.extend(classify_is_food_batch(chunk))
     return results
 
@@ -455,5 +477,5 @@ if __name__ == "__main__":
 
     print("\n--- batch smoke test ---")
     batch_results = classify_is_food_chunked(samples, batch_size=5)
-    for s, r in zip(samples, batch_results):
+    for s, r in zip(samples, batch_results, strict=False):
         print(f"{s!r:30} -> outcome={r.outcome.value:10} is_food={r.is_food!r:6} confidence={r.confidence}")

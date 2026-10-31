@@ -9,10 +9,10 @@ clutter sitting next to the actual working implementation
 implementation already did the job correctly.
 """
 
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz, process
 from sqlalchemy.orm import Session
-from app.models import ShelfLifeReference
 
+from app.models import ShelfLifeReference
 
 _canonical_names_cache: list[str] | None = None
 

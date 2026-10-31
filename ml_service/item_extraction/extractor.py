@@ -39,9 +39,9 @@ Design (locked, see Item_Extraction.md / chat record):
 from dataclasses import dataclass
 from time import perf_counter
 
-from .unit_extractor import extract_unit
 from .brand_matcher import extract_brand
 from .food_classifier import classify_is_food, classify_is_food_chunked
+from .unit_extractor import extract_unit
 
 
 @dataclass
@@ -55,13 +55,16 @@ class ItemFields:
 class ItemFieldsTiming:
     """Per-stage latency in ms - for #33-style latency measurement.
     Not part of the production contract, opt-in via extract_item_fields(debug=True)."""
+
     unit_ms: float
     brand_ms: float
     food_ms: float
     total_ms: float
 
 
-def extract_item_fields(item_name: str, debug: bool = False) -> ItemFields | tuple[ItemFields, ItemFieldsTiming]:
+def extract_item_fields(
+    item_name: str, debug: bool = False
+) -> ItemFields | tuple[ItemFields, ItemFieldsTiming]:
     """
     Orchestrates Stage 2: unit extraction -> brand extraction ->
     is_food classification, in that order (each stage consumes the
@@ -101,9 +104,11 @@ def extract_item_fields(item_name: str, debug: bool = False) -> ItemFields | tup
     t3 = perf_counter()
 
     if debug:
-        print(f"    [debug] food_result: outcome={food_result.outcome.value} "
-              f"confidence={food_result.confidence} raw_response={food_result.raw_response!r} "
-              f"reasoning={food_result.reasoning!r}")
+        print(
+            f"    [debug] food_result: outcome={food_result.outcome.value} "
+            f"confidence={food_result.confidence} raw_response={food_result.raw_response!r} "
+            f"reasoning={food_result.reasoning!r}"
+        )
 
     fields = ItemFields(
         unit=unit_result.unit,
@@ -148,7 +153,7 @@ def extract_item_fields_batch(item_names: list[str]) -> list[ItemFields]:
     brand_results = [extract_brand(u.remaining_text) for u in unit_results]
 
     classification_inputs = []
-    for original_name, brand_result in zip(item_names, brand_results):
+    for original_name, brand_result in zip(item_names, brand_results, strict=False):
         stripped_remaining = brand_result.remaining_text.strip()
         classification_inputs.append(stripped_remaining or original_name)
 
@@ -160,7 +165,9 @@ def extract_item_fields_batch(item_names: list[str]) -> list[ItemFields]:
             brand=brand_result.brand,
             is_food=food_result.is_food,
         )
-        for unit_result, brand_result, food_result in zip(unit_results, brand_results, food_results)
+        for unit_result, brand_result, food_result in zip(
+            unit_results, brand_results, food_results, strict=False
+        )
     ]
 
 
@@ -177,18 +184,20 @@ if __name__ == "__main__":
     samples = [
         "ORG STRWBRY 1LB",
         "Supravit-M Tablet 10's",
-        "NESTLE 1L",          # unit+brand likely consume the whole string
+        "NESTLE 1L",  # unit+brand likely consume the whole string
         "CHICKEN BREAST 500G",
         "Dettol Antiseptic 500ML",
     ]
     for s in samples:
         r, timing = extract_item_fields(s, debug=True)
         print(f"{s!r:30} -> unit={r.unit!r:8} brand={r.brand!r:10} is_food={r.is_food!r}")
-        print(f"    [timing] unit={timing.unit_ms:.1f}ms brand={timing.brand_ms:.1f}ms "
-              f"food={timing.food_ms:.1f}ms total={timing.total_ms:.1f}ms")
+        print(
+            f"    [timing] unit={timing.unit_ms:.1f}ms brand={timing.brand_ms:.1f}ms "
+            f"food={timing.food_ms:.1f}ms total={timing.total_ms:.1f}ms"
+        )
         print()
 
     print("--- batch smoke test ---")
     batch_fields = extract_item_fields_batch(samples)
-    for s, r in zip(samples, batch_fields):
+    for s, r in zip(samples, batch_fields, strict=False):
         print(f"{s!r:30} -> unit={r.unit!r:8} brand={r.brand!r:10} is_food={r.is_food!r}")

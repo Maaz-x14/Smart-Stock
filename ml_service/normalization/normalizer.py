@@ -33,31 +33,32 @@ only ever called for items already confirmed food.
 """
 
 from dataclasses import dataclass
+
 from sqlalchemy.orm import Session
 
-from .preprocessor        import preprocess_token
-from .abbreviation_map    import pass1_lookup
-from .fuzzy_matcher       import pass2_fuzzy
-from .llm_fallback        import pass3_llm
-from .unit_normalizer     import normalize_unit
+from .abbreviation_map import pass1_lookup
 from .category_classifier import assign_category
+from .fuzzy_matcher import pass2_fuzzy
+from .llm_fallback import pass3_llm
+from .preprocessor import preprocess_token
+from .unit_normalizer import normalize_unit
 
 
 @dataclass
 class NormalizedItem:
-    canonical_name:      str
-    quantity:            float
-    unit:                str | None
-    category:            str
-    normalization_pass:  int    # 1, 2, or 3 - which pass resolved the name
-    confidence:          float  # 1.0 for Pass 1; score/100 for Pass 2; 0.70 for Pass 3
+    canonical_name: str
+    quantity: float
+    unit: str | None
+    category: str
+    normalization_pass: int  # 1, 2, or 3 - which pass resolved the name
+    confidence: float  # 1.0 for Pass 1; score/100 for Pass 2; 0.70 for Pass 3
 
 
 def normalize_entity(
     item_name: str,
-    quantity:  float,
-    unit:      str | None,
-    db:        Session,
+    quantity: float,
+    unit: str | None,
+    db: Session,
 ) -> NormalizedItem | None:
     """
     Normalize a single Stage 2 item into a canonical inventory item.
@@ -82,31 +83,31 @@ def normalize_entity(
         return None
 
     canonical_name = None
-    confidence     = 0.0
-    norm_pass      = 0
+    confidence = 0.0
+    norm_pass = 0
 
     # -- Pass 1: Abbreviation Map --
     result = pass1_lookup(cleaned)
     if result:
         canonical_name = result
-        confidence     = 1.0
-        norm_pass      = 1
+        confidence = 1.0
+        norm_pass = 1
 
     # -- Pass 2: Fuzzy Match --
     if canonical_name is None:
         result, score = pass2_fuzzy(cleaned, db)
         if result:
             canonical_name = result
-            confidence     = score
-            norm_pass      = 2
+            confidence = score
+            norm_pass = 2
 
     # -- Pass 3: LLM Fallback (raw item_name, not preprocessed - more context) --
     if canonical_name is None:
         result, score = pass3_llm(item_name, db)
         if result:
             canonical_name = result
-            confidence     = score
-            norm_pass      = 3
+            confidence = score
+            norm_pass = 3
 
     if canonical_name is None:
         return None

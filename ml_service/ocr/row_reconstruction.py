@@ -26,7 +26,7 @@ def cluster_rows_deskewed(texts, scores, boxes, polys, y_tol_ratio=0.3):
     slope = np.tan(angle)  # dy per dx
 
     items = []
-    for text, score, box in zip(texts, scores, boxes):
+    for text, score, box in zip(texts, scores, boxes, strict=False):
         x1, y1, x2, y2 = box
         x_center = (x1 + x2) / 2
         y_center = (y1 + y2) / 2
@@ -55,7 +55,7 @@ def cluster_rows(texts, scores, boxes, y_tol_ratio=0.5):
     cluster_rows_deskewed handles skewed receipt photos and is the
     production path."""
     items = []
-    for text, score, box in zip(texts, scores, boxes):
+    for text, score, box in zip(texts, scores, boxes, strict=False):
         x1, y1, x2, y2 = box
         y_center = (y1 + y2) / 2
         height = y2 - y1

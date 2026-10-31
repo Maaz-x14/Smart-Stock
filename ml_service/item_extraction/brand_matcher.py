@@ -57,25 +57,71 @@ _FUZZY_MATCH_THRESHOLD = 88  # conservative; tune against real data
 # excluded (see docstring).
 _DESCRIPTOR_STOPWORDS = {
     # freshness / origin
-    "fresh", "freshly", "organic", "local", "imported",
-    "frozen", "chilled", "homemade",
+    "fresh",
+    "freshly",
+    "organic",
+    "local",
+    "imported",
+    "frozen",
+    "chilled",
+    "homemade",
     # quality / marketing
-    "premium", "classic", "original", "special", "select",
-    "choice", "best", "value", "economy", "deluxe",
-    "natural", "pure", "real", "authentic",
+    "premium",
+    "classic",
+    "original",
+    "special",
+    "select",
+    "choice",
+    "best",
+    "value",
+    "economy",
+    "deluxe",
+    "natural",
+    "pure",
+    "real",
+    "authentic",
     # size / quantity descriptors
-    "large", "small", "medium", "jumbo", "mini",
-    "family", "regular", "extra",
+    "large",
+    "small",
+    "medium",
+    "jumbo",
+    "mini",
+    "family",
+    "regular",
+    "extra",
     # dietary / formulation
-    "diet", "light", "lite", "low", "fat", "free",
-    "salted", "unsalted",
+    "diet",
+    "light",
+    "lite",
+    "low",
+    "fat",
+    "free",
+    "salted",
+    "unsalted",
     # packaging
-    "pack", "packet", "box", "bag", "pouch", "bottle",
-    "tin", "can", "jar", "sachet",
+    "pack",
+    "packet",
+    "box",
+    "bag",
+    "pouch",
+    "bottle",
+    "tin",
+    "can",
+    "jar",
+    "sachet",
     # product qualifiers
-    "mix", "mixed", "assorted", "combo", "variety",
-    "flavoured", "flavored", "plain", "hot", "mild",
-    "spicy", "sweet",
+    "mix",
+    "mixed",
+    "assorted",
+    "combo",
+    "variety",
+    "flavoured",
+    "flavored",
+    "plain",
+    "hot",
+    "mild",
+    "spicy",
+    "sweet",
 }
 
 _TOKEN_PATTERN = re.compile(r"[A-Za-z&']+")
@@ -83,7 +129,7 @@ _TOKEN_PATTERN = re.compile(r"[A-Za-z&']+")
 
 def _load_lexicon() -> dict[str, str]:
     """Load brand_lexicon.json -> flat {surface_form: canonical_brand}."""
-    with open(_LEXICON_PATH, "r", encoding="utf-8") as f:
+    with open(_LEXICON_PATH, encoding="utf-8") as f:
         data = json.load(f)
     flat: dict[str, str] = {}
     for canonical, surfaces in data["brands"].items():
@@ -127,15 +173,13 @@ def _lexicon_match(tokens: list[str]) -> tuple[str | None, str | None]:
 
     windows = list(tokens)
     for n in (2, 3):
-        windows += [" ".join(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+        windows += [" ".join(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
 
     best_match = None
     best_score = 0
     best_window = None
     for window in windows:
-        result = process.extractOne(
-            _normalize(window), _ALL_SURFACE_FORMS, scorer=fuzz.ratio
-        )
+        result = process.extractOne(_normalize(window), _ALL_SURFACE_FORMS, scorer=fuzz.ratio)
         if result and result[1] >= _FUZZY_MATCH_THRESHOLD and result[1] > best_score:
             best_match, best_score, best_window = result[0], result[1], window
 
@@ -158,9 +202,7 @@ def extract_brand(remaining_text: str) -> BrandExtractionResult:
 
     canonical, matched_window = _lexicon_match(tokens)
     if canonical:
-        remaining = re.sub(
-            re.escape(matched_window), "", remaining_text, flags=re.IGNORECASE
-        ).strip()
+        remaining = re.sub(re.escape(matched_window), "", remaining_text, flags=re.IGNORECASE).strip()
         remaining = re.sub(r"\s{2,}", " ", remaining)
         return BrandExtractionResult(brand=canonical, remaining_text=remaining)
 
@@ -177,8 +219,8 @@ if __name__ == "__main__":
         "BEEF MINCE",
         "XYZFOODS RICE",
         "SHAN MASALA",
-        "FRESH ST BROCCOLI",       # the bug case: Fresh St is a real brand
-        "FRESH CHOICE JUICE",      # another descriptor/brand collision
+        "FRESH ST BROCCOLI",  # the bug case: Fresh St is a real brand
+        "FRESH CHOICE JUICE",  # another descriptor/brand collision
         "HEAD AND SHOULDERS SHAMPOO",
         "HEAD & SHOULDERS SHAMPOO",
         "HEAD SHOULDERS SHAMPOO",
