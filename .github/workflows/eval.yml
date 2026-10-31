@@ -1,0 +1,64 @@
+name: ML eval (live Groq)
+
+# Deliberately NOT on every push - see plan doc "Why eval is separate":
+# real receipt text goes to Groq here, and this shares the same
+# account-wide free-tier rate limit the app uses, so running it on
+# every push would be flaky for everyone and leaks data unnecessarily.
+#
+# NOT WIRED UP YET: scripts/test_pipeline_local.py hardcodes Maaz's
+# own local absolute paths to his receipt images (removed from the
+# repo in this same change, for privacy - see HANDOFF.md). There is
+# currently no sample receipt image anywhere in this repo for this
+# job to run against. Before this workflow can actually run, either:
+#   (a) add a small set of receipt images that are NOT real purchase
+#       data (synthetic/redacted test receipts) under a path this
+#       script reads, and update its hardcoded path list, or
+#   (b) keep real receipts out of the repo entirely and have Maaz run
+#       the eval scripts locally against his own images instead.
+# Until one of those happens, `workflow_dispatch` lets this be run
+# manually for a sanity check, but the nightly schedule is commented
+# out below so it doesn't fail silently every night.
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: "0 3 * * *"  # re-enable once sample receipts exist (see note above)
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      DATABASE_URL: postgresql+psycopg2://smartstock:smartstock@localhost:5432/smartstock_eval
+      JWT_SECRET: eval-run-secret
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: smartstock
+          POSTGRES_PASSWORD: smartstock
+          POSTGRES_DB: smartstock_eval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smartstock"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install full dependencies (incl. PaddleOCR)
+        run: pip install -r requirements.txt
+      - name: Apply migrations and seed shelf-life data
+        run: |
+          alembic upgrade head
+          python -m db.seeds.shelf_life_seed
+      - name: Run pipeline against sample receipts
+        # See the NOT WIRED UP YET note above - this step will fail
+        # until scripts/test_pipeline_local.py points at real, repo-
+        # committed sample images instead of Maaz's local machine paths.
+        run: python -m scripts.test_pipeline_local
+      - name: Run latency benchmark
+        run: python -m scripts.benchmark_latency
