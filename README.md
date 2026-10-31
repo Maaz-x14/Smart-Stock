@@ -175,6 +175,8 @@ The NER experiment remains documented as historical work.
 
 ## Current Status
 
+**ML pipeline** (OCR → row reconstruction → prefilter → row parser → item extraction → normalization → expiry):
+
 | Component | Status |
 |---|---|
 | OCR | ✅ Complete — PaddleOCR selected after real-receipt comparison |
@@ -191,6 +193,17 @@ The NER experiment remains documented as historical work.
 | End-to-end validation | ✅ Done — 2 of 4 real receipts run through the full pipeline; remaining 2 not yet tried |
 | End-to-end latency | ✅ Measured — ~11.9s mean / ~11.5s median across 2 receipts (over the 10s budget on one, near it on the other); OCR + Item Field Extraction are the bottleneck stages |
 | `is_food` evaluation set | ⏳ Still needs labeled data — real pipeline runs show correct classification but this isn't a substitute for a formal measurement |
+
+**Application** (built around the pipeline above — see `HANDOFF.md` for full detail):
+
+| Component | Status |
+|---|---|
+| Backend (FastAPI, auth/receipts/inventory/alerts/recipes) | ✅ Built, 37 pytest tests passing, ruff-clean |
+| Frontend (React/TypeScript, fridge/upload/alerts/recipes/waste) | ✅ Built, 11 Vitest tests passing, typechecks/builds/lints clean |
+| CI (`ci.yml`: lint, backend tests, frontend, docker build) | ⚠️ Written, YAML-valid, **not yet run end-to-end** — needs a real push to verify |
+| Dockerfile / docker-compose | ⚠️ Written, **not build-verified** — build sandbox couldn't reach Docker Hub |
+| `eval.yml` (live-Groq nightly eval) | ⚠️ Written, **not wired up** — depends on sample receipts that don't exist in the repo yet; nightly schedule disabled |
+| Deploy / CD | ❌ Not started — no deploy target chosen yet |
 
 The repository deliberately distinguishes **implemented**, **validated**, and **measured** work.
 
@@ -240,7 +253,7 @@ Recipe suggestions use Spoonacular; expiry alerts are driven by scheduled jobs.
 
 ```text
 Smart-Stock/
-├── app/                    # FastAPI application + DB models
+├── app/                    # FastAPI application: routers, services, models, auth
 ├── ml_service/
 │   ├── ocr/                # OCR + row reconstruction
 │   ├── parsing/             # Prefilter + row parser
@@ -249,12 +262,15 @@ Smart-Stock/
 │   ├── expiry/              # Shelf-life + expiry prediction
 │   ├── ner/                 # Retired NER record
 │   └── pipeline.py          # End-to-end orchestrator (built, validated)
+├── frontend/                # React + TypeScript + Vite app
+├── tests/                   # Backend pytest suite (37 tests)
+├── scripts/                 # benchmark_latency.py, check_cache.py, test_pipeline_local.py
 ├── db/seeds/                # Reference data
 ├── migrations/              # Alembic migrations
 ├── assets/svgs/             # Pipeline diagrams
-├── benchmark_latency.py     # Per-stage + end-to-end latency benchmark (#33)
-├── check_cache.py           # normalization_cache inspect/clear CLI
-├── test_pipeline_local.py   # Local end-to-end pipeline test harness
+├── .github/workflows/       # ci.yml, eval.yml
+├── Dockerfile / docker-compose.yml / docker-entrypoint.sh
+├── HANDOFF.md               # Build state, known gaps, next steps
 ├── PRD.md
 ├── Architecture.md
 ├── ML_Pipeline.md
@@ -307,7 +323,11 @@ The goal is not to attach an AI model to an inventory app. The goal is to build 
 - [ ] Optimize latency — OCR and Item Field Extraction are the two bottleneck stages, end-to-end currently exceeds the 10s budget on larger receipts
 - [ ] Expand receipt-format coverage (multi-line/Tax% header format, issue #23)
 - [ ] Run full end-to-end accuracy evaluation against ground truth
-- [ ] Fix Stage 2 fail-safe gap for empty-content classification responses (#52, open)
+- [x] Fix Stage 2 fail-safe gap for empty-content classification responses (#52, closed)
+- [ ] Verify Dockerfile builds and the app runs in it (blocked by Docker Hub access in the build sandbox — see `HANDOFF.md`)
+- [ ] Run CI workflows end-to-end on a real push
+- [ ] Add non-sensitive sample receipts and wire up `eval.yml`
+- [ ] Choose a deploy target and wire up CD
 
 ---
 

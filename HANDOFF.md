@@ -12,28 +12,63 @@
 - Push back on bad ideas. Distinguish facts from speculation.
 - Individual per-file commits.
 - Ruthless mentor mode: stress-test everything, don't sugarcoat.
-- Present files at end of response as attachments, not pasted inline — so specific lines can be edited without re-pasting whole files. **Always the FULL file, never a diff/snippet** — the person applies it directly. (Diffs were tried once for doc updates and failed to apply cleanly — full files only, permanently.)
+- Present files at end of response as attachments, not pasted inline — so specific lines can be edited without re-pasting whole files. **Always the FULL file, never a diff/snippet** — the person applies it directly.
 
 ---
 
 ## Project Summary
 
-Smart-Stock: portfolio/CV project. Reads grocery receipts, predicts expiry dates, reduces food waste. Full stack: React + TypeScript -> FastAPI -> PostgreSQL -> ML Pipeline (7 stages).
+Smart-Stock: portfolio/CV project. Reads grocery receipts (Pakistani retail), predicts expiry dates, reduces food waste. Full stack: React + TypeScript -> FastAPI -> PostgreSQL -> ML Pipeline (7 stages).
 
-**Docs, current status:**
+## Current state (as of the app build)
 
-| Doc | Status |
-|---|---|
-| PRD.md, Architecture.md, API_Spec.md, DB_Schema.md, OCR_Training.md, NER_Training.md | Current as of previous handoff, unchanged this session |
-| ML_Pipeline.md | Updated prior session (#33 latency numbers). Unchanged this session. |
-| Item_Extraction.md | Updated prior session (#50 fix writeup). Unchanged this session. |
-| Normalization.md | Updated prior session (#49/#51 fix writeups). Unchanged this session. |
-| Expiry.md | Current as of previous handoff, unchanged this session |
-| README.md | Rewritten prior session. Unchanged this session. |
+The ML pipeline (OCR -> row reconstruction -> prefilter -> row parser -> item extraction -> normalization -> expiry) was already done and validated before this build. This build added the application around it: backend API, frontend, CI/CD, Dockerfile.
 
-**Naming note:** `Normalization_Training.md`/`Expiry_Training.md` renamed to `Normalization.md`/`Expiry.md` (earlier session) - neither stage trains a model (3-pass lookup + rule-based tiers), the `_Training` suffix was a leftover from NER-era naming. `OCR_Training.md` keeps its name - TrOCR fine-tuning genuinely happened there.
+**Backend — done, tested (37 pytest tests passing), linted clean:**
+- Auth: register/login/refresh/logout, JWT access (30 min) + HttpOnly refresh cookie (7 days)
+- Receipts: `/upload` (runs the ML pipeline, stores a pending extraction) and `/confirm` (writes to inventory, 404/410 handling)
+- Inventory: CRUD, bulk-consume -> waste_log
+- Alerts: `/alerts`, dismiss, and the daily 08:00 UTC expiry-scan job (APScheduler)
+- Recipes: Spoonacular lookup with a Postgres-backed cache (150 req/day free tier)
+- Schema: one reconciled Alembic migration (`f1b2c3d4e5a6`) — UUID keys, `receipts`/`alerts`/`alert_items`/`waste_log`/`recipe_cache` tables, matches `DB_Schema.md` v1.1
+- Housekeeping: `requirements.txt`/`requirements-ci.txt`/`requirements-dev.txt` split (torch/transformers removed), lazy PaddleOCR import, env-safe `app/db.py`, debug row-dump removed from `pipeline.py`
 
----
+**Frontend — done, tested (11 Vitest tests passing), typechecks, builds, lints clean:**
+- Vite + React + TypeScript, TanStack Query, Zustand (upload/undo state only), React Router
+- Fridge view (shelves by category), upload + mandatory confirm modal, alerts, recipes, waste tracker (Recharts)
+- Design system per the build plan: receipt/shelf-tag visual concept, urgency tiers that never rely on color alone, one deliberate motion moment (the scan progress), reduced-motion fallback, keyboard-accessible confirm modal
+
+**CI/CD — written, NOT run end-to-end (see "Known gaps" below):**
+- `.github/workflows/ci.yml`: lint, test-backend (Postgres 15 service container, `alembic check`, mocked Groq/Paddle), frontend (lint/typecheck/test/build), docker build
+- `.github/workflows/eval.yml`: separate manual/nightly workflow for live-Groq checks — **not wired up yet**, see its own header comment
+- `Dockerfile` + `docker-compose.yml` for local dev — **not build-verified**, see "Known gaps"
+
+## Known gaps — read before trusting any of the above blindly
+
+1. **Dockerfile is unverified.** The sandbox this was built in blocks Docker Hub, so `docker build` never completed. Build and run it yourself before relying on it.
+2. **CI workflows are YAML-valid but not run end-to-end on GitHub itself.** No `act`/`actionlint` available in the build sandbox, and the Postgres service container GitHub Actions needs also needs Docker Hub. However, everything the CI jobs *do* has now actually been run locally against real Postgres (not just SQLite) in this environment — see "What got caught by actually running things against Postgres" below. Push to a branch and watch the Actions tab for anything environment-specific that only GitHub's runners would surface (network, image pulls, secrets).
+3. **`eval.yml` will fail if run as-is.** `scripts/test_pipeline_local.py` hardcodes your local machine's absolute paths to receipt images, which are no longer in the repo (removed for privacy — see below). Fix before relying on the nightly schedule (currently commented out for this reason). Its `SessionLocal` import bug (see below) is fixed, so once you point it at real images, only the path problem remains.
+4. **Frontend types are hand-written**, not generated from the running API's OpenAPI schema (the plan's original intent) — there was no running backend instance to introspect during the build. Regenerate once the backend is deployed somewhere reachable.
+5. **`inference/*.jpg` and `inference/local_inference.py` are still tracked and still physically present** — a previous pass in this same build said these had been "removed from the working tree," but that was wrong: `git status`/`git ls-files` both confirm they're still there, still committed, and `local_inference.py` still hardcodes `/home/maazahmad/Desktop/Smart-Stock/...`. `.gitignore` now excludes `/inference` and `result.txt` going forward, but gitignore only stops NEW changes from being tracked — it does nothing for files already committed. These are real receipt/invoice images (customer data) sitting in a public repo right now. Per your standing rule that you apply file changes yourself, run this instead of me doing it:
+   ```
+   git rm -r inference/
+   git commit -m "Remove receipt images and local inference script (real customer data, public repo)"
+   ```
+   This removes them from the working tree and from the next commit, but **they remain recoverable from git history** (every prior commit that touched them) until you separately decide whether to rewrite history (`git filter-repo` or similar) — worth doing before calling this actually resolved, since the whole point is this data shouldn't be exposed.
+
+## What got caught by actually running things against Postgres
+
+The gap above (only SQLite had been tested) turned out to matter: running `alembic upgrade head` and `alembic check` against a real local Postgres 16 instance surfaced several real bugs that SQLite-only testing had hidden. All are now fixed, and the migration/model/seed data are verified consistent against actual Postgres, not just inferred from reading the code:
+
+1. **`urgency_tier` as a `GENERATED ALWAYS ... STORED` column doesn't work.** DB_Schema.md and the migration both specced it using `CURRENT_DATE` inside the generation expression — Postgres requires generated columns to be IMMUTABLE, and `CURRENT_DATE` isn't. `alembic upgrade head` failed outright with `generation expression is not immutable`. Fixed by dropping the column entirely and computing `urgency_tier` in `app/routers/inventory.py`'s `_to_response()`, from the same `predicted_expiry_date` already used for `days_remaining` — simpler, and actually correct for "today" (a stored column would freeze urgency as of insert time, never update). `app/models.py`, the migration, and DB_Schema.md's underlying design are all affected by this — DB_Schema.md itself should probably be corrected too, not just the code.
+2. **`shelf_life_reference` had real pre-existing drift**, from before this session: `app/models.py` declared `subcategory`, `source`, `created_at`, wider column widths, and a `UniqueConstraint("canonical_name", "storage_context")` that no migration had ever actually created in the database. `alembic check` caught this directly. Two consequences this had already caused, silently: `db/seeds/shelf_life_seed.py` called `ShelfLifeReference(notes=...)`, a field the model no longer had (`TypeError` at runtime — the seed script was simply broken); and nothing stopped a duplicate `(canonical_name, storage_context)` row from being inserted — which there in fact was (`"Raita"` was listed twice under different categories). All fixed: `notes` restored to the model, the missing columns/constraint added via a migration step, and the duplicate seed row removed.
+3. **`SessionLocal` doesn't exist** in the rewritten `app/db.py` (it now lazily builds a session factory via `get_session_factory()`), but four pre-existing scripts still imported the old name: `db/seeds/shelf_life_seed.py`, `scripts/check_cache.py`, `scripts/benchmark_latency.py`, `scripts/test_pipeline_local.py`, and `ml_service/expiry/evaluate.py`. All five would have raised `ImportError` the moment anyone ran them. Fixed in all five.
+4. **Index-naming drift**: `app/models.py` used SQLAlchemy's `unique=True`/`index=True` column shorthand in several places, which auto-generates index names like `ix_users_email`; the migrations instead create explicitly-named indexes like `idx_users_email`. Both exist, so the DB "worked," but `alembic check` reported permanent phantom drift (it looks like new indexes need creating every time, even though nothing's actually missing). Fixed by removing the shorthand and declaring each table's indexes explicitly via `__table_args__`, matching the names the migrations actually use.
+5. **`receipts.extracted_items` and `recipe_cache.response_json` were `JSONB` in the migration but plain `JSON` in the model** — another `alembic check` type-drift finding. Nothing in the app uses JSONB-specific operators, so fixed by making the migration use plain `JSON` too, which is also portable to SQLite (JSONB isn't).
+
+After all of the above, `alembic check` reports **zero drift** against a real Postgres 16 database (confirmed by actually running it, including a from-scratch `alembic upgrade head` → `alembic check` cycle), the seed script runs cleanly and is actually idempotent (confirmed by running it twice), and all 37 backend tests + ruff check/format still pass. None of this had been run against real Postgres before — only SQLite, in CI's test-backend job and locally. This is exactly the gap this section used to warn about; it's now closed for the schema/migration layer specifically (Docker and GitHub Actions itself remain unverified per item 1-2 above, since those need network access this sandbox doesn't have).
+
+Also fixed while in here: `ruff format --check .` previously failed on 12 files in `app`/`tests` and, after scoping lint config correctly (excluding notebooks and one-off local scripts in `scripts/`, which were never meant to be style-gated), on 18 pre-existing `ml_service` files too — all purely cosmetic (import order, blank lines, line wrapping, one `isinstance(x, (int, float))` → `isinstance(x, int | float)`, a few `zip()` calls given an explicit `strict=False` to match their actual pre-existing behavior). Verified every touched `ml_service` module still imports cleanly and the full test suite still passes after the reformat — see `pyproject.toml`'s `exclude` comment for the scoping rationale.
 
 ## Pipeline (unchanged structure)
 
@@ -51,90 +86,17 @@ Receipt Image
   -> Structured Inventory Item
 ```
 
----
+Pipeline internals are unchanged by this build except: `ml_service/ocr/model.py`'s PaddleOCR import moved inside `_get_ocr()` (lazy), and the Issue #49 debug row-dump was removed from `pipeline.py`.
 
-## THIS SESSION'S WORK (#52 investigation, CLOSED — no bug found in current code)
+## Open ML issues (unaffected by the app build)
 
-### #52 — Stage 2 fail-safe not firing on empty-content classification, CLOSED (verified correct, not a code fix)
-Read `_parse_batch_response()` and `classify_is_food_batch()` in `food_classifier.py` end to end against the original report (`finish_reason='length'` + empty content -> `is_food=True` instead of `UNKNOWN`).
+#16, #23, #34, #48 — all ML refinements, not app-blocking. See GitHub for details.
 
-**Could not reproduce in current code.** Traced every failure path by hand:
-- `raw is None` -> `_parse_batch_response` returns `None` immediately.
-- `raw == ""` -> `json.loads("")` raises `JSONDecodeError` -> caught -> `None`.
-- Truncated mid-array, wrong length, missing/duplicate index, non-bool `is_food` (int `1`/`0` correctly rejected — `isinstance(1, bool)` is `False` in Python), out-of-range confidence, non-list top level — all correctly return `None`.
-- `classify_is_food_batch()`: `parsed is None` -> every item in the chunk resolves to `UNKNOWN`. No partial trust, no path that could produce `True` from malformed input.
+## Next steps
 
-Wrote `test_issue_52_failsafe.py` — 15 regression tests (11 unit tests directly on `_parse_batch_response`, 4 end-to-end on `classify_is_food_batch()` with the Groq call mocked, no live API/rate-limit risk). All 15 pass against current code.
-
-**Working conclusion (labeled as such, not verified):** the original report predates this project's #50/#51 prompt+parsing hardening work. Most likely the parsing code was already this strict when #52 was filed, and whatever produced the false `is_food=True` was a different, already-fixed path (or a version-shift in this file not directly attributable to #52 specifically) — not confirmed, no historical diff was reviewed to prove this. Not chasing further: current code is verified correct and now has permanent regression coverage against this exact failure shape, which is what actually matters going forward.
-
-Closed via issue comment + `state: closed`, `state_reason: completed`. `test_issue_52_failsafe.py` committed to repo root.
-
----
-
-## Prompt iteration notes
-
-Not applicable this session — no prompts were touched. See `Item_Extraction.md` §4.2 / `Normalization.md` §5.4 for the #50/#51 prompt-design reasoning if it needs to be revisited.
-
----
-
-## Known follow-up, NOT fixed this session (very low priority)
-
-**Pass 3 resolves multi-product brand names too eagerly.** Example: `Pakola MIk Uht 250M1` -> `'Pakola'` (pass 3, confidence 0.28, hard_default fallback). Still deferred — needs a labeled eval set to tune safely (#34), not another blind prompt edit. Unchanged, not touched this session.
-
----
-
-## Stage-by-stage status (Stages 1-4 substance unchanged this session)
-
-### Stages 1, 1.5, 1.6, 1.7 - unchanged this session. All DONE.
-
-### Stage 2 - Item Field Extraction: no code change this session. #52 investigated and closed (no bug found) — see above.
-
-### Stage 3 - Normalization: unchanged this session.
-
-### Stage 4 - Expiry Prediction: unchanged this session.
-
----
-
-## Real findings, carried forward as open items
-
-1. **Latency: formally measured (#33, closed prior session).** 2.jpg consistently over the 10s budget; 3.jpg near/under it. OCR and Item Field Extraction are the two stages worth optimizing if picked up.
-2. **Groq free-tier TPM is fragile under back-to-back calls** — confirmed prior session. Real pipeline runs should be spaced out.
-3. **Pakola multi-product-brand gap** — see "Known follow-up" above, unchanged.
-4. Carried from prior sessions, still open/unconfirmed: Pass 3 `ANDA DOZEN -> Andouille` gap, Pass 3 free-text output testability.
-5. **No persisted DB/API path for Stage 2 output yet** (#30/#31, still open) — is_food/brand/unit are computed correctly but nothing downstream stores them. This is the next real blocker, not a nice-to-have.
-
----
-
-## GitHub issue status (as of this handoff)
-
-**Closed this session:** #52 (fail-safe investigated, verified already correct, closed with regression tests — not a code fix).
-
-**Still open, unchanged from previous handoffs:**
-- #16 - confidence-score garbage-line filter, unblocked, not picked up yet
-- #23 - 5.jpg multi-line header + Tax(%) format, deferred
-- #34 - labeled `is_food` sample, not started — needed for real is_food accuracy measurement and the Pakola follow-up
-- #48 - Stage 3 reasoning-loop gap on severely corrupted OCR — still flagged as "likely improved by #50's prompt rewrite, not formally confirmed." Not rechecked this session.
-
-**Open, from the earlier-filed set, status:**
-- #30 - DB migration: add `brand` column - still not run. **Next up.**
-- #31 - Update Pydantic schemas (`brand`, `is_food` in `/receipts/upload` response) - still not done. **Next up.**
-- #32 - Real end-to-end validation - 2 of 4 real receipts tested (2.jpg, 3.jpg). 1.jpg, 4.jpg still not run. Closed as complete per PRD's stated acceptance criteria; this gap is a documented known limitation, not a reason it was reopened.
-
----
-
-## Immediate next steps (in order)
-
-1. **#30 + #31** — DB migration (`brand` column on `inventory_items`) + Pydantic schema updates (`brand`, `is_food` in the upload response) so Stage 2's real output can actually be persisted and returned via the API. Nothing downstream of the ML pipeline stores this yet — this is now the main blocker, everything else (eval sets, further tuning) is easier once real data exists to pull from.
-2. **Build the labeled eval set (#34)** — blocks real is_food accuracy measurement and the Pakola brand-resolution follow-up. Do this once #30/#31 give a real persisted-data source, rather than hand-collecting from logs again.
-3. **1.jpg/4.jpg** — cheap, closes out #32's one remaining known gap.
-4. #23/#48/#16 remain deferred, low priority, unchanged.
-
----
-
-## Key decisions made this session (context for future reference, not to be re-litigated without new evidence)
-
-- **#52 closed without a code change.** Verified via manual trace + 15 regression tests that current `_parse_batch_response`/`classify_is_food_batch` already fail safe correctly on every documented malformed/empty/truncated shape. Root cause of the *original* report was not identified (no historical diff reviewed) — explicitly documented as unconfirmed rather than invented, per this project's "distinguish facts from speculation" rule. The regression suite is the durable outcome, not a fix.
-- **Mocking `_call_groq_batch` for tests, not a real API call.** Keeps the regression suite fast (0.13s for 15 tests), free, and independent of Groq rate limits — appropriate here since the thing under test is pure parsing/control-flow logic, not model behavior.
-
-Carried from prior sessions, still valid: Stage 2's `food_classifier.py` model is Groq `openai/gpt-oss-20b`; Stage 3/4 interface is `normalize_entity(item_name, quantity, unit, db)`; frozen-signal category check runs on raw unstripped `item_name`; doc renames (`Normalization.md`/`Expiry.md`); test-fixture errors documented as such, not silently patched.
+1. Fix the `eval.yml` gap (add non-sensitive sample receipts, or keep it local-only — your call).
+2. Build and run the Dockerfile for real; fix whatever the sandbox couldn't catch.
+3. Push and watch the CI workflows actually run once.
+4. Decide on a deploy target (Render/Railway + Vercel, per `Architecture.md`) and wire up CD.
+5. Regenerate frontend types from a live OpenAPI schema once deployed.
+6. Decide whether to rewrite git history to purge the old receipt images.

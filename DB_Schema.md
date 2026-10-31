@@ -1,7 +1,7 @@
 # DB_Schema.md — Database Schema
 ## Smart-Stock PostgreSQL Schema
 
-**Version:** 1.1 — added `brand` column to `inventory_items` (Stage 2 Item Field Extraction now produces it)
+**Version:** 1.2 — corrected `urgency_tier` and `shelf_life_days_avg` to match what the app schema reconciliation migration (`f1b2c3d4e5a6`) actually builds, after `alembic check` against real Postgres surfaced both as spec/reality mismatches (see HANDOFF.md). Was v1.1: added `brand` column to `inventory_items` (Stage 2 Item Field Extraction now produces it).
 **Engine:** PostgreSQL 15+
 **ORM:** SQLAlchemy 2.0
 
@@ -58,36 +58,38 @@ Master lookup table mapping food categories and subcategories to average shelf l
 ```sql
 CREATE TABLE shelf_life_reference (
     id                  SERIAL PRIMARY KEY,
-    canonical_name      VARCHAR(255) NOT NULL,
-    category            VARCHAR(100) NOT NULL,
+    canonical_name      VARCHAR(100) NOT NULL,
+    category            VARCHAR(50) NOT NULL,
     subcategory         VARCHAR(100),
-    storage_context     VARCHAR(50) NOT NULL CHECK (
+    storage_context     VARCHAR(20) NOT NULL CHECK (
                             storage_context IN ('fridge', 'freezer', 'pantry')
                         ),
     shelf_life_days_min INTEGER NOT NULL,
+    shelf_life_days_avg INTEGER NOT NULL,
     shelf_life_days_max INTEGER NOT NULL,
-    shelf_life_days_avg INTEGER NOT NULL GENERATED ALWAYS AS (
-                            (shelf_life_days_min + shelf_life_days_max) / 2
-                        ) STORED,
-    source              VARCHAR(255),
+    notes               TEXT,
+    source              VARCHAR(50),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE UNIQUE INDEX idx_shelf_life_lookup
     ON shelf_life_reference(canonical_name, storage_context);
-CREATE INDEX idx_shelf_life_category ON shelf_life_reference(category);
 ```
+
+**Correction:** this table originally specced `shelf_life_days_avg` as a `GENERATED ALWAYS AS ((min + max) / 2) STORED` column. Unlike `urgency_tier` above, that expression IS immutable (no `CURRENT_DATE`), so it would actually work — but it's not how this got built: the seed data (`db/seeds/shelf_life_seed.py`) supplies min/avg/max as three independently-chosen numbers per item (not always the exact midpoint — e.g. an item might reasonably skew toward its max under good conditions), so `shelf_life_days_avg` is a plain NOT NULL column, written directly, not derived. `idx_shelf_life_category` (on `category` alone) was also specced but never actually created in any migration — left out above to match the real table; add it later if category-only lookups turn out to need it.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | SERIAL | PK |
-| `canonical_name` | VARCHAR(255) | e.g., "Strawberries", "Whole Milk" |
-| `category` | VARCHAR(100) | Produce, Dairy, Meat, Pantry, Frozen |
+| `canonical_name` | VARCHAR(100) | e.g., "Strawberries", "Whole Milk" |
+| `category` | VARCHAR(50) | Produce, Dairy, Meat, Pantry, Frozen |
 | `subcategory` | VARCHAR(100) | e.g., "Berries", "Leafy Greens" |
-| `storage_context` | VARCHAR(50) | `fridge` / `freezer` / `pantry` |
+| `storage_context` | VARCHAR(20) | `fridge` / `freezer` / `pantry` |
 | `shelf_life_days_min` | INTEGER | Lower bound |
+| `shelf_life_days_avg` | INTEGER | Typical value (not strictly the midpoint — see note above) |
 | `shelf_life_days_max` | INTEGER | Upper bound |
-| `shelf_life_days_avg` | INTEGER | Computed: (min+max)/2 |
+| `notes` | TEXT | Free-text context, e.g. "Unopened", "Wash before eating" |
+| `source` | VARCHAR(50) | Where the figure came from, if tracked |
 | `source` | VARCHAR(255) | Reference (FDA, USDA, etc.) |
 
 **Sample Data:**
@@ -109,7 +111,6 @@ Core table. One row per distinct item in a user's inventory.
 
 ```sql
 CREATE TYPE item_status AS ENUM ('ACTIVE', 'CONSUMED', 'WASTED');
-CREATE TYPE urgency_tier AS ENUM ('green', 'yellow', 'red', 'expired');
 CREATE TYPE storage_context AS ENUM ('fridge', 'freezer', 'pantry');
 
 CREATE TABLE inventory_items (
@@ -130,22 +131,17 @@ CREATE TABLE inventory_items (
     expiry_confidence       NUMERIC(4, 3),
 
     status                  item_status NOT NULL DEFAULT 'ACTIVE',
-    urgency_tier            urgency_tier GENERATED ALWAYS AS (
-                                CASE
-                                    WHEN predicted_expiry_date < CURRENT_DATE
-                                        THEN 'expired'
-                                    WHEN predicted_expiry_date <= CURRENT_DATE + INTERVAL '2 days'
-                                        THEN 'red'
-                                    WHEN predicted_expiry_date <= CURRENT_DATE + INTERVAL '5 days'
-                                        THEN 'yellow'
-                                    ELSE 'green'
-                                END
-                            ) STORED,
+    -- urgency_tier is NOT a column (see note below the CREATE TABLE).
 
     source                  VARCHAR(50) DEFAULT 'receipt',
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+```
+
+**`urgency_tier` correction:** this table originally specced `urgency_tier` as a `GENERATED ALWAYS AS (...) STORED` column, using `CURRENT_DATE` in the generation expression. Postgres requires generated columns to be IMMUTABLE, and `CURRENT_DATE` isn't — `CREATE TABLE`/`ALTER TABLE ADD COLUMN` with this expression fails outright with `generation expression is not immutable` (confirmed by actually running it against real Postgres 16, not just inferred). `urgency_tier` is **not** a database column at all: it's computed at API-response time in `app/routers/inventory.py`, from the same `predicted_expiry_date` this table stores. This is also simpler than it looks: a generated column would freeze urgency as of insert time and never reflect "today," which is the whole point of the field.
+
+```sql
 
 CREATE INDEX idx_inventory_user_id ON inventory_items(user_id);
 CREATE INDEX idx_inventory_expiry ON inventory_items(predicted_expiry_date)
@@ -169,8 +165,9 @@ CREATE INDEX idx_inventory_status ON inventory_items(user_id, status);
 | `predicted_expiry_date` | DATE | From expiry engine |
 | `expiry_confidence` | NUMERIC(4,3) | 0.000–1.000 |
 | `status` | ENUM | ACTIVE / CONSUMED / WASTED |
-| `urgency_tier` | ENUM | Computed column |
 | `source` | VARCHAR(50) | `receipt` or `manual` |
+
+**`urgency_tier` is not a column** — see the correction note under the `CREATE TABLE` above. It's computed from `predicted_expiry_date` at API-response time, not stored.
 
 **Note:** price, discount, and total (extracted by Row Parser, ML_Pipeline.md §5) are intentionally **not** persisted — confirmed out of scope for the inventory-tracking use case. Only `quantity` from Row Parser's output reaches this table.
 
@@ -304,11 +301,14 @@ GROUP BY outcome;
 ```
 
 ### Inventory grouped by category
+`urgency_tier` isn't a column (see note above), so the "red" filter happens in the application, not SQL — this query returns the raw dates and the app buckets them:
 ```sql
 SELECT
     category,
     COUNT(*) AS item_count,
-    COUNT(*) FILTER (WHERE urgency_tier = 'red') AS urgent_count
+    COUNT(*) FILTER (
+        WHERE predicted_expiry_date <= CURRENT_DATE + INTERVAL '2 days'
+    ) AS urgent_count
 FROM inventory_items
 WHERE user_id = :user_id
   AND status = 'ACTIVE'

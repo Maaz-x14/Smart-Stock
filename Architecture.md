@@ -2,7 +2,9 @@
 
 ## Smart-Stock
 
-**Version:** 2.0 — NER retired, replaced by row-parser + item field extraction (see ML_Pipeline.md for full rationale)
+**Version:** 2.1 — application layer (backend/frontend/CI/Docker) built around the already-validated ML pipeline. v2.0's NER retirement (row-parser + item field extraction) is unchanged; see ML_Pipeline.md for that rationale.
+
+**Note:** this document describes the target/high-level design. Where the as-built code differs in a material way, that's called out inline rather than silently updating the diagrams — see §3.2–§3.4 and §6–§7 in particular. For a precise file-by-file account of what was actually built, see `HANDOFF.md`.
 
 ---
 
@@ -36,7 +38,7 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 ┌──────────────────────────────▼──────────────────────────────────────┐
 │                         API LAYER                                   │
 │                                                                     │
-│              FastAPI (Python 3.11) + Uvicorn                        │
+│              FastAPI (Python 3.12) + Uvicorn                        │
 │                                                                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
 │  │  /receipts   │  │  /inventory  │  │  /recipes  │  /alerts    │   │
@@ -101,20 +103,24 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 │   ┌──────────┐  ┌──────────────────┐  ┌────────────────────────┐   │
 │   │  users   │  │ inventory_items  │  │  shelf_life_reference  │   │
 │   └──────────┘  └──────────────────┘  └────────────────────────┘   │
-│   ┌──────────┐  ┌──────────────────┐                               │
-│   │  alerts  │  │  waste_log       │                               │
-│   └──────────┘  └──────────────────┘                               │
+│   ┌──────────┐  ┌──────────────────┐  ┌────────────────────────┐   │
+│   │  alerts  │  │  waste_log       │  │  receipts              │   │
+│   └──────────┘  └──────────────────┘  └────────────────────────┘   │
+│   ┌──────────────┐  ┌──────────────────┐                           │
+│   │  alert_items │  │  recipe_cache    │                           │
+│   └──────────────┘  └──────────────────┘                           │
 └────────────────────────────────────────────────────────────────────┘
                                 │
                ┌────────────────▼────────────────┐
                │        External Services        │
                │                                 │
                │  Spoonacular API (recipes)      │
-               │  LLM API (is_food gate,         │
-               │  Normalization Pass 3)          │
-               │  SMTP / Push (notifications)    │
+               │  LLM API (Groq) — is_food gate, │
+               │  Normalization Pass 3           │
                └─────────────────────────────────┘
 ```
+
+As built, there are 8 tables, not 5 (`receipts` holds pending/unconfirmed extractions so `/confirm` can be idempotent; `alert_items` joins alerts to the inventory items they cover; `recipe_cache` backs the Spoonacular cache). There's no WebSocket or SMTP/push channel in the built backend — alerts are polled via `GET /alerts`, not pushed. See §6 for the actual auth flow and §4 for the actual upload flow.
 
 <img src="assets/svgs/smart_stock_pipeline.svg" alt="Pipeline" width="500" />
 
@@ -124,34 +130,44 @@ Smart-Stock is a full-stack web application with an embedded ML pipeline. The sy
 
 ### 3.1 Frontend (React + TypeScript)
 
-| Module            | Responsibility                                                                           |
-| ----------------- | ---------------------------------------------------------------------------------------- |
-| `ReceiptUpload` | Handles file selection, preview, upload POST, and item confirmation modal                |
-| `FridgeView`    | Renders inventory grid with category grouping, expiry color-coding, sort/filter controls |
-| `ItemCard`      | Individual item display: name, qty, expiry bar, CRUD actions, "Cook with this" button    |
-| `AlertPanel`    | Displays active expiry alerts, links to recipe view                                      |
-| `RecipeModal`   | Shows fetched recipes for at-risk ingredients; "Mark as Cooked" action                   |
-| `WasteTracker`  | Visualizes CONSUMED vs WASTED ratios over time (Recharts)                                |
-| `AuthContext`   | JWT token storage, login/logout, route guards                                            |
+As built, under `frontend/src/`:
 
-**State Management:** React Query for server state, Zustand for local UI state.
+| Module                          | Responsibility                                                                           |
+| -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `features/receipts/UploadPage` + `ScanProgress` + `ConfirmModal` | File selection, upload, animated scan progress, mandatory confirm modal before items hit inventory |
+| `features/fridge/FridgePage`    | Inventory grid grouped by storage context/category, urgency tiers (word + shape, never color alone) |
+| `features/alerts/AlertsPage`    | Active expiry alerts, dismiss action, links to recipes                                   |
+| `features/recipes/RecipesPage`  | Fetched recipes for at-risk ingredients                                                  |
+| `features/waste/WastePage`      | CONSUMED vs WASTED visualization over time (Recharts)                                    |
+| `features/auth/useAuth` + `LoginPage`/`RegisterPage` | Login/register forms, calls into `authStore`                                 |
+| `lib/authStore.ts`              | Zustand: access token in memory only (never localStorage)                               |
+| `lib/api.ts`                    | Fetch wrapper with 401 → refresh → retry-once logic                                      |
+| `components/UrgencyBadge`, `ItemTag`, `OfflineBanner`, `AppLayout`, `ProtectedRoute` | Shared UI/layout                                            |
+
+**State Management:** TanStack Query for server state, Zustand for UI state only (upload/undo, auth token).
 
 **Confirmation modal note:** items with `is_food: false` are surfaced (not silently dropped) with a "detected but excluded — not a food item" indicator, so the user can see what was filtered and why. See API_Spec.md §2.
 
 ### 3.2 Backend (FastAPI)
 
-| Module                      | Responsibility                                                    |
-| ---------------------------- | ------------------------------------------------------------------ |
-| `routers/receipts.py`       | Receipt upload endpoint; orchestrates ML pipeline call            |
-| `routers/inventory.py`      | Full CRUD for inventory items                                     |
-| `routers/recipes.py`        | Proxies Spoonacular API with caching layer                        |
-| `routers/alerts.py`         | Alert fetch, creation, and dismissal                              |
-| `routers/auth.py`           | JWT-based authentication                                          |
-| `services/ml_service.py`    | Loads models, runs the full pipeline (see 3.3)                    |
-| `services/scheduler.py`     | APScheduler daily job: scans expiry, creates alerts               |
-| `services/spoonacular.py`   | Spoonacular API client with Redis/in-memory cache                 |
-| `models/`                   | SQLAlchemy ORM models                                             |
-| `schemas/`                  | Pydantic request/response schemas                                 |
+As built, under `app/`:
+
+| Module                       | Responsibility                                                     |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `routers/receipts.py`        | `/upload` (runs ML pipeline, stores pending `Receipt`) + `/confirm` (writes `InventoryItem` rows) |
+| `routers/inventory.py`       | Full CRUD + `/bulk-consume` for inventory items                     |
+| `routers/recipes.py`         | Proxies Spoonacular with a Postgres-backed cache                    |
+| `routers/alerts.py`          | Alert fetch + dismiss                                                |
+| `routers/auth.py`            | register/login/refresh/logout — JWT access + HttpOnly refresh cookie |
+| `routers/waste.py`           | Waste log read + summary stats                                       |
+| `services/receipts.py`       | Upload/confirm business logic; storage-context casing boundary (API lowercase ↔ ML pipeline capitalized) |
+| `services/inventory.py`, `services/alerts.py`, `services/recipes.py`, `services/waste.py` | Business logic per domain, called by routers |
+| `scheduler.py`               | APScheduler daily 08:00 UTC job: scans expiry, creates alerts (idempotent) |
+| `security.py`                | bcrypt hashing, JWT create/decode                                    |
+| `deps.py`                    | `get_current_user`, rate-limiting dependency                         |
+| `models.py`                  | SQLAlchemy ORM models (single module, not a package)                 |
+| `schemas*.py`                | Pydantic request/response schemas, split by domain                   |
+| `errors.py`                  | Unified `{"error": {...}}` response shape + exception handlers       |
 
 ### 3.3 ML Pipeline
 
@@ -189,13 +205,15 @@ Structured Output → API Response
 
 ### 3.4 Database (PostgreSQL)
 
-Detailed in `DB_Schema.md`. Five core tables:
+Detailed in `DB_Schema.md`. As built (reconciled in migration `f1b2c3d4e5a6`), 8 tables, all with UUID primary keys:
 
 - `users` — authentication and profile
-- `inventory_items` — live inventory with expiry metadata (now includes `brand`)
+- `receipts` — pending/unconfirmed extractions from `/upload`, confirmed via `/confirm`
+- `inventory_items` — live inventory with expiry metadata; nullable ML-only fields for manually-added items; DB-generated `urgency_tier`
 - `shelf_life_reference` — canonical shelf-life lookup per food category
-- `alerts` — expiry alert records per user
-- `waste_log` — terminal state events (CONSUMED / WASTED)
+- `alerts` / `alert_items` — expiry alert records per user, joined to the inventory items they cover
+- `waste_log` — terminal state events (CONSUMED / WASTED), FK to `inventory_items` with no cascade delete
+- `recipe_cache` — Postgres-backed cache for Spoonacular lookups
 
 ---
 
@@ -205,13 +223,10 @@ Detailed in `DB_Schema.md`. Five core tables:
 User uploads receipt image
         │
         ▼
-POST /api/receipts/upload
+POST /api/v1/receipts/upload  (multipart, rate-limited: 10/h)
         │
         ▼
-FastAPI saves image to temp storage
-        │
-        ▼
-ml_service.run_pipeline(image_path)
+ml_service.pipeline.run_pipeline(image_bytes)
     ├── PaddleOCR extracts text + bounding boxes
     ├── Row reconstruction clusters boxes into logical rows (deskew-corrected)
     ├── Prefilter drops metadata rows
@@ -221,7 +236,11 @@ ml_service.run_pipeline(image_path)
     └── Expiry engine predicts best-before dates (skipped for is_food=false)
         │
         ▼
-Returns: List[ExtractedItem] (unconfirmed, includes is_food=false items flagged as excluded)
+A `Receipt` row is written with status=pending and the extracted items as JSON
+        │
+        ▼
+Returns: ReceiptUploadResponse (receipt_id + List[ExtractedItem], includes
+         is_food=false items flagged as excluded — not silently dropped)
         │
         ▼
 Frontend shows confirmation modal
@@ -229,12 +248,11 @@ Frontend shows confirmation modal
 User confirms / edits / removes items
         │
         ▼
-POST /api/inventory/batch-create
+POST /api/v1/receipts/confirm  (receipt_id + edited item list)
         │
         ▼
-Items saved to inventory_items table
-        │
-Image deleted from temp storage
+Receipt marked confirmed (idempotent — repeat calls get 410, not a duplicate write);
+items saved to inventory_items with lowercase storage_context
 ```
 
 ---
@@ -242,45 +260,46 @@ Image deleted from temp storage
 ## 5. Data Flow: Expiry Alert Cycle
 
 ```
-APScheduler — runs daily @ 08:00 UTC
+APScheduler — runs daily @ 08:00 UTC (BackgroundScheduler, in-process)
         │
         ▼
 Query: SELECT * FROM inventory_items
        WHERE expiry_date <= NOW() + INTERVAL '48 hours'
-       AND status = 'ACTIVE'
         │
         ▼
-For each user with at-risk items:
-    Create alert record in `alerts` table
-    Send in-app notification (WebSocket push)
+For each user with at-risk items not already covered by an ACTIVE alert:
+    Create alert + alert_items rows (idempotent — won't duplicate-alert the same item)
         │
         ▼
-User sees alert → clicks "Get Recipes"
+User polls GET /api/v1/alerts → sees alert → clicks "Get Recipes"
         │
         ▼
-GET /api/recipes?ingredients=[list]
+GET /api/v1/recipes?ingredients=[list]&limit=N  (rate-limited: 50/h)
         │
         ▼
-Check cache → if miss → call Spoonacular API
+Check recipe_cache (sha256 of sorted ingredients) → if miss → call Spoonacular API
         │
         ▼
-Return ranked recipes
+Return ranked recipes (graceful 503, not 500, if Spoonacular key missing)
         │
 User marks recipe as "Cooked"
         │
         ▼
-PATCH /api/inventory/bulk-consume
-    → Sets item status = 'CONSUMED' in waste_log
+PATCH /api/v1/inventory/bulk-consume
+    → Writes waste_log rows with outcome=CONSUMED
 ```
+
+There's no WebSocket or push channel in the built backend — alerts are pulled by the frontend via polling `GET /alerts`, not pushed server-side. That's a scope decision, not an oversight; see `HANDOFF.md` "Next steps" if real-time push is wanted later.
 
 ---
 
 ## 6. Authentication Flow
 
-- **Method:** JWT (JSON Web Tokens) via `python-jose`
-- Access token: 30-minute expiry
-- Refresh token: 7-day expiry, stored in HttpOnly cookie
-- All `/api/*` routes except `/auth/login` and `/auth/register` require `Authorization: Bearer <token>`
+- **Method:** JWT (JSON Web Tokens) via `python-jose`, password hashing via `bcrypt`
+- Access token: 30-minute expiry, returned in the response body, held in memory on the frontend (never localStorage)
+- Refresh token: 7-day expiry, HttpOnly cookie scoped to `/api/v1/auth`, `secure` flag on outside local dev
+- All `/api/v1/*` routes except `/auth/login` and `/auth/register` require `Authorization: Bearer <token>`
+- Frontend's `lib/api.ts` auto-refreshes on a 401 and retries the request once before giving up
 
 ---
 
